@@ -1,6 +1,5 @@
 import type {
   MatchResult,
-  OfficeStatus,
   PlanInfo,
   ProjectInfo,
   RosterRecord,
@@ -32,12 +31,11 @@ export interface ValidationInput {
   project: ProjectInfo;
   plan: PlanInfo;
   outputRoot: string;
-  office: OfficeStatus | null;
   privacyMode: string;
 }
 
 export const validateProject = ({
-  selectedMatches, participants, project, plan, outputRoot, office, privacyMode,
+  selectedMatches, participants, project, plan, outputRoot, privacyMode,
 }: ValidationInput): ValidationIssue[] => {
   const issues: ValidationIssue[] = [];
   if (selectedMatches.length === 0) {
@@ -132,9 +130,6 @@ export const validateProject = ({
   }
   if (!outputRoot) {
     issues.push(issue("output-root", "error", "出力先が選択されていません", "書類を保存する親フォルダを選択してください。", validationTargets.review.outputRoot));
-  }
-  if (!office?.available) {
-    issues.push(issue("office", "error", "Word互換ソフトを確認できません", "Microsoft WordまたはWPS Officeをインストールし、「再確認」を押してください。"));
   }
   if (!issues.some((item) => item.severity === "error")) {
     issues.push(issue("ready", "info", "必須項目の検証が完了しました", "元ファイルを変更せず、新しい企画フォルダへ4ファイルを生成します。"));

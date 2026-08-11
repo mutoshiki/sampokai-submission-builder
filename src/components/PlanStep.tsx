@@ -1,4 +1,5 @@
 import {
+  Button,
   Checkbox,
   ComboBox,
   FormGroup,
@@ -57,11 +58,19 @@ interface PlanStepProps {
 
 export function PlanStep({ plan, roster, onChange, onPickRoute, focusTarget, onFocusHandled }: PlanStepProps) {
   const [selectedTab, setSelectedTab] = useState(0);
+  const [newEquipment, setNewEquipment] = useState("");
   const itineraryText = buildItineraryText(plan.itinerary);
   const duration = durationBetween(plan.entryTime, plan.exitTime);
   const homeBaseItems = roster.map((person, index) => ({ id: String(index), index, label: `${person.name} / ${person.phone || "連絡先なし"}` }));
   const selectedHomeBase = plan.homeBaseRosterIndex === null ? null : homeBaseItems.find((item) => item.index === plan.homeBaseRosterIndex) ?? null;
   const update = <K extends keyof PlanInfo>(key: K, value: PlanInfo[K]) => onChange({ ...plan, [key]: value });
+  const equipmentItems = [...standardEquipment, ...plan.equipment.filter((item) => !standardEquipment.includes(item))];
+  const addEquipment = () => {
+    const item = newEquipment.trim();
+    if (!item || plan.equipment.includes(item)) return;
+    update("equipment", [...plan.equipment, item]);
+    setNewEquipment("");
+  };
   useEffect(() => {
     if (focusTarget?.tabIndex !== undefined) setSelectedTab(focusTarget.tabIndex);
   }, [focusTarget]);
@@ -82,7 +91,7 @@ export function PlanStep({ plan, roster, onChange, onPickRoute, focusTarget, onF
       <Tabs selectedIndex={selectedTab} onChange={({ selectedIndex }) => setSelectedTab(selectedIndex)}>
         <TabList aria-label="登山計画の入力区分" contained>
           <Tab>行程</Tab>
-          <Tab>ルート・中止時対応</Tab>
+          <Tab>登山ルート画像</Tab>
           <Tab>持参物・連絡先</Tab>
         </TabList>
         <TabPanels>
@@ -118,7 +127,7 @@ export function PlanStep({ plan, roster, onChange, onPickRoute, focusTarget, onF
             <FormGroup legendText="持参物">
               <TextInput id="drink-quantity" labelText="飲料量" value={plan.drinkQuantity} placeholder="例：2L程度" onChange={(event) => update("drinkQuantity", event.target.value)} />
               <div className="equipment-grid" id="equipment-grid" tabIndex={-1}>
-                {standardEquipment.map((item) => (
+                {equipmentItems.map((item) => (
                   <Checkbox
                     key={item}
                     id={`equipment-${item}`}
@@ -127,6 +136,22 @@ export function PlanStep({ plan, roster, onChange, onPickRoute, focusTarget, onF
                     onChange={(_, { checked }) => update("equipment", checked ? [...plan.equipment, item] : plan.equipment.filter((value) => value !== item))}
                   />
                 ))}
+              </div>
+              <div className="setting-row">
+                <TextInput
+                  id="new-equipment"
+                  labelText="持ち物を追加"
+                  value={newEquipment}
+                  placeholder="例：モバイルバッテリー"
+                  onChange={(event) => setNewEquipment(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addEquipment();
+                    }
+                  }}
+                />
+                <Button type="button" kind="secondary" size="sm" onClick={addEquipment}>追加</Button>
               </div>
             </FormGroup>
             <div id="police-contacts" tabIndex={-1}>

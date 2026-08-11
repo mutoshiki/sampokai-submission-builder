@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getVersion } from "@tauri-apps/api/app";
 import { DocumentExport } from "@carbon/icons-react";
@@ -10,16 +9,22 @@ import { ParticipantsStep } from "./components/ParticipantsStep";
 import { ProjectStep } from "./components/ProjectStep";
 import { PlanStep, standardEquipment } from "./components/PlanStep";
 import { ReviewStep } from "./components/ReviewStep";
-import { allowRouteImagePreview, checkOffice, generateDocuments, getDebugDefaults, loadTabularFile } from "./lib/api";
+import { allowRouteImagePreview, generateDocuments, getDebugDefaults, loadTabularFile, openOutputFolder } from "./lib/api";
 import { buildItineraryText, durationBetween } from "./lib/itinerary";
-import { buildResponseRecords, buildRosterRecords, detectMapping, emptyMapping } from "./lib/mapping";
+import {
+  applyRosterOverrides,
+  buildResponseRecords,
+  buildRosterRecords,
+  changedRosterFields,
+  detectMapping,
+  emptyMapping,
+} from "./lib/mapping";
 import { findDuplicateResponseIds, matchResponses } from "./lib/matching";
 import { validateProject } from "./lib/validation";
 import type {
   ColumnMapping,
   GenerationResult,
   ImportedTable,
-  OfficeStatus,
   PlanInfo,
   PrivacyMode,
   ProjectInfo,
@@ -113,18 +118,18 @@ export default function App() {
   const [rosterMapping, setRosterMapping] = useState<ColumnMapping>(emptyMapping);
   const [responseMapping, setResponseMapping] = useState<ColumnMapping>(emptyMapping);
   const [manualMatches, setManualMatches] = useState<Record<string, number | null>>({});
-  const [participantOverrides, setParticipantOverrides] = useState<Record<number, RosterRecord>>({});
+  const [participantOverrides, setParticipantOverrides] = useState<Record<number, Partial<RosterRecord>>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [project, setProject] = useState<ProjectInfo>(initialProject);
   const [plan, setPlan] = useState<PlanInfo>(initialPlan);
   const [privacyMode, setPrivacyMode] = useState<PrivacyMode>("full");
   const [outputRoot, setOutputRoot] = useState("");
-  const [office, setOffice] = useState<OfficeStatus | null>(null);
   const [loadingRoster, setLoadingRoster] = useState(false);
   const [loadingResponses, setLoadingResponses] = useState(false);
   const [importError, setImportError] = useState("");
   const [generating, setGenerating] = useState(false);
   const [generationError, setGenerationError] = useState("");
+  const [outputOpenError, setOutputOpenError] = useState("");
   const [result, setResult] = useState<GenerationResult | null>(null);
   const [validationTarget, setValidationTarget] = useState<ValidationTarget | null>(null);
   const [debugMode, setDebugMode] = useState(false);
@@ -132,10 +137,7 @@ export default function App() {
   const [appVersion, setAppVersion] = useState("");
 
   const baseRoster = useMemo(() => buildRosterRecords(rosterTable, rosterMapping), [rosterTable, rosterMapping]);
-  const roster = useMemo(
-    () => baseRoster.map((record, index) => participantOverrides[index] ?? record),
-    [baseRoster, participantOverrides],
-  );
+  const roster = useMemo(() => applyRosterOverrides(baseRoster, participantOverrides), [baseRoster, participantOverrides]);
   const responses = useMemo(
     () => buildResponseRecords(responseTable, responseMapping),
     [responseTable, responseMapping],
@@ -153,26 +155,26 @@ export default function App() {
     () => selectedMatches.flatMap((match) => (match.rosterIndex === null ? [] : [roster[match.rosterIndex]])),
     [selectedMatches, roster],
   );
+  const currentProject = useMemo(() => {
+    const rosterIndex = project.organizer.rosterIndex;
+    const organizer = rosterIndex === null ? null : roster[rosterIndex];
+    if (!organizer) return project;
+    return {
+      ...project,
+      organizer: {
+        rosterIndex,
+        studentId: organizer.studentId,
+        name: organizer.name,
+        faculty: organizer.faculty,
+        department: organizer.department,
+        phone: organizer.phone,
+      },
+    };
+  }, [project, roster]);
   const issues = useMemo(
-    () => validateProject({ selectedMatches, participants, project, plan, outputRoot, office, privacyMode }),
-    [selectedMatches, participants, project, plan, outputRoot, office, privacyMode],
+    () => validateProject({ selectedMatches, participants, project: currentProject, plan, outputRoot, privacyMode }),
+    [selectedMatches, participants, currentProject, plan, outputRoot, privacyMode],
   );
-
-  const refreshOffice = async () => {
-    if (!isTauriRuntime()) {
-      setOffice({ available: false, applicationName: null, message: "デスクトップアプリで確認します。" });
-      return;
-    }
-    try {
-      setOffice(await checkOffice());
-    } catch (error) {
-      setOffice({ available: false, applicationName: null, message: String(error) });
-    }
-  };
-
-  useEffect(() => {
-    void refreshOffice();
-  }, []);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -298,6 +300,7 @@ export default function App() {
     setOutputRoot(defaults.outputRoot);
     setImportError("");
     setGenerationError("");
+    setOutputOpenError("");
     setResult(null);
     setDebugMode(true);
     setValidationTarget(null);
@@ -342,7 +345,7 @@ export default function App() {
   const buildPayload = () => ({
     privacyMode,
     participants,
-    project,
+    project: currentProject,
     plan: {
       ...plan,
       totalDurationText: durationBetween(plan.entryTime, plan.exitTime),
@@ -411,7 +414,15 @@ export default function App() {
           onSelectionChange={setSelectedIds}
           onManualMatch={(responseId, rosterIndex) => setManualMatches((current) => ({ ...current, [responseId]: rosterIndex }))}
           onParticipantOverride={(rosterIndex, participant) => {
-            setParticipantOverrides((current) => ({ ...current, [rosterIndex]: participant }));
+            const baseParticipant = baseRoster[rosterIndex];
+            if (!baseParticipant) return;
+            const changes = changedRosterFields(baseParticipant, participant);
+            setParticipantOverrides((current) => {
+              const next = { ...current };
+              if (Object.keys(changes).length) next[rosterIndex] = changes;
+              else delete next[rosterIndex];
+              return next;
+            });
             if (project.organizer.rosterIndex === rosterIndex) {
               setProject((current) => ({ ...current, organizer: { rosterIndex, studentId: participant.studentId, name: participant.name, faculty: participant.faculty, department: participant.department, phone: participant.phone } }));
             }
@@ -420,22 +431,25 @@ export default function App() {
           onFocusHandled={clearValidationTarget}
         />
       ) : null}
-      {step === 1 ? <ProjectStep project={project} roster={roster} onChange={setProject} focusTarget={validationTarget} onFocusHandled={clearValidationTarget} /> : null}
+      {step === 1 ? <ProjectStep project={currentProject} roster={roster} onChange={setProject} focusTarget={validationTarget} onFocusHandled={clearValidationTarget} /> : null}
       {step === 2 ? <PlanStep plan={plan} roster={roster} onChange={setPlan} onPickRoute={() => void chooseRoute()} focusTarget={validationTarget} onFocusHandled={clearValidationTarget} /> : null}
       {step === 3 ? (
         <ReviewStep
           participants={participants}
           issues={issues}
           privacyMode={privacyMode}
-          office={office}
           outputRoot={outputRoot}
           generating={generating}
           result={result}
           generationError={generationError}
+          outputOpenError={outputOpenError}
           onPrivacyChange={setPrivacyMode}
           onChooseOutput={() => void chooseOutput()}
-          onCheckOffice={() => void refreshOffice()}
-          onOpenOutput={() => { if (result) void openPath(result.outputDir); }}
+          onOpenOutput={() => {
+            if (!result) return;
+            setOutputOpenError("");
+            void openOutputFolder(result.outputDir).catch((error) => setOutputOpenError(String(error)));
+          }}
           focusTarget={validationTarget}
           onGoToTarget={goToValidationTarget}
           onFocusHandled={clearValidationTarget}

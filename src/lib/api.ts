@@ -13,6 +13,8 @@ export const checkOffice = () => invoke<OfficeStatus>("check_office");
 export const generateDocuments = (payload: unknown, outputRoot: string) =>
   invoke<GenerationResult>("generate_documents", { payload, outputRoot });
 
+export const openOutputFolder = (path: string) => invoke("open_output_folder", { path });
+
 export const allowRouteImagePreview = (path: string) => invoke("allow_route_image_preview", { path });
 
 export const getDebugDefaults = () => invoke<DebugDefaults>("debug_defaults");

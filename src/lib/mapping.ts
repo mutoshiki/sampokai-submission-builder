@@ -103,6 +103,36 @@ export const buildRosterRecords = (table: ImportedTable | null, mapping: ColumnM
     .filter((record) => record.studentId || record.name);
 };
 
+type EditableRosterField = Exclude<keyof RosterRecord, "rowId" | "sourceRow">;
+
+const editableRosterFields: EditableRosterField[] = [
+  "studentId",
+  "name",
+  "nameKana",
+  "faculty",
+  "department",
+  "gender",
+  "address",
+  "phone",
+  "emergencyPhone",
+];
+
+export type RosterOverrides = Record<number, Partial<Pick<RosterRecord, EditableRosterField>>>;
+
+// Keep user edits field-scoped so later column-mapping corrections can refresh every untouched value.
+export const applyRosterOverrides = (records: RosterRecord[], overrides: RosterOverrides): RosterRecord[] =>
+  records.map((record, index) => ({ ...record, ...overrides[index] }));
+
+export const changedRosterFields = (
+  base: RosterRecord,
+  edited: RosterRecord,
+): Partial<Pick<RosterRecord, EditableRosterField>> =>
+  Object.fromEntries(
+    editableRosterFields
+      .filter((field) => base[field] !== edited[field])
+      .map((field) => [field, edited[field]]),
+  ) as Partial<Pick<RosterRecord, EditableRosterField>>;
+
 export const buildResponseRecords = (
   table: ImportedTable | null,
   mapping: ColumnMapping,

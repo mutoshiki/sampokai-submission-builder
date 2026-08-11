@@ -174,6 +174,20 @@ $planPath = Join-Path $outputDirectory "02_${safeMountain}登山計画書.docx"
 $planPdfPath = Join-Path $outputDirectory "02_${safeMountain}登山計画書.pdf"
 $noticePath = Join-Path $outputDirectory "03_${safeMountain}_登山等届.docx"
 
+$routeImage = $null
+try {
+    $routeImage = (Resolve-Path -LiteralPath ([string]$payload.plan.routeImagePath) -ErrorAction Stop).Path
+    if (-not (Test-Path -LiteralPath $routeImage -PathType Leaf)) { throw "file not found" }
+    $extension = [System.IO.Path]::GetExtension($routeImage).ToLowerInvariant()
+    if ($extension -notin @(".png", ".jpg", ".jpeg", ".bmp")) { throw "unsupported extension: $extension" }
+    Add-Type -AssemblyName System.Drawing
+    $routeImageProbe = [System.Drawing.Image]::FromFile($routeImage)
+    $routeImageProbe.Dispose()
+}
+catch {
+    throw "SAMP_IMAGE_READ: ルート画像を読み込めません。PNG、JPEG、BMP形式の壊れていない画像を選択してください。詳細: $($_.Exception.Message)"
+}
+
 Copy-Item -LiteralPath (Join-Path $templateDirectory "participant-roster.docx") -Destination $participantPath
 Copy-Item -LiteralPath (Join-Path $templateDirectory "hiking-plan.docx") -Destination $planPath
 Copy-Item -LiteralPath (Join-Path $templateDirectory "hiking-notice.docx") -Destination $noticePath
@@ -293,8 +307,12 @@ try {
     $routeRange.MoveEnd($wdCharacter, -1) | Out-Null
     $routeRange.Text = ""
     $routeRange.Collapse($wdCollapseStart)
-    $routeImage = (Resolve-Path -LiteralPath ([string]$payload.plan.routeImagePath)).Path
-    $picture = $document.InlineShapes.AddPicture($routeImage, $false, $true, $routeRange)
+    try {
+        $picture = $document.InlineShapes.AddPicture($routeImage, $false, $true, $routeRange)
+    }
+    catch {
+        throw "SAMP_IMAGE_INSERT: ルート画像を登山計画書へ追加できません。別のPNG、JPEG、BMP画像を選択してください。詳細: $($_.Exception.Message)"
+    }
     try { $picture.LockAspectRatio = -1 } catch {}
     if ($picture.Width -gt 430) { $picture.Width = 430 }
     if ($picture.Height -gt 400) { $picture.Height = 400 }

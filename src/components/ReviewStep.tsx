@@ -12,12 +12,11 @@ import {
   TableHeader,
   TableRow,
 } from "@carbon/react";
-import { Folder, FolderOpen, Renew } from "@carbon/icons-react";
+import { Folder, FolderOpen } from "@carbon/icons-react";
 import { useEffect } from "react";
 import { focusValidationTarget } from "../lib/focus";
 import type {
   GenerationResult,
-  OfficeStatus,
   PrivacyMode,
   RosterRecord,
   ValidationIssue,
@@ -30,14 +29,13 @@ interface ReviewStepProps {
   participants: RosterRecord[];
   issues: ValidationIssue[];
   privacyMode: PrivacyMode;
-  office: OfficeStatus | null;
   outputRoot: string;
   generating: boolean;
   result: GenerationResult | null;
   generationError: string;
+  outputOpenError: string;
   onPrivacyChange: (mode: PrivacyMode) => void;
   onChooseOutput: () => void;
-  onCheckOffice: () => void;
   onOpenOutput: () => void;
   focusTarget: ValidationTarget | null;
   onGoToTarget: (target: ValidationTarget) => void;
@@ -48,14 +46,13 @@ export function ReviewStep({
   participants,
   issues,
   privacyMode,
-  office,
   outputRoot,
   generating,
   result,
   generationError,
+  outputOpenError,
   onPrivacyChange,
   onChooseOutput,
-  onCheckOffice,
   onOpenOutput,
   focusTarget,
   onGoToTarget,
@@ -154,13 +151,6 @@ export function ReviewStep({
           <h2>出力環境</h2>
           <div className="setting-row">
             <div>
-              <span className="setting-label">Word互換ソフト</span>
-              <span>{office?.message ?? "確認中"}</span>
-            </div>
-            <Button kind="ghost" size="sm" renderIcon={Renew} onClick={onCheckOffice}>再確認</Button>
-          </div>
-          <div className="setting-row">
-            <div>
               <span className="setting-label">出力先</span>
               <span className="path-text">{outputRoot || "未選択"}</span>
             </div>
@@ -171,6 +161,7 @@ export function ReviewStep({
 
       {generating ? <InlineLoading description="WordとPDFを生成しています。Officeを閉じずにお待ちください。" /> : null}
       {generationError ? <InlineNotification kind="error" title="書類を生成できませんでした" subtitle={generationError} hideCloseButton lowContrast /> : null}
+      {outputOpenError ? <InlineNotification kind="error" title="完成フォルダを開けませんでした" subtitle={outputOpenError} hideCloseButton lowContrast /> : null}
       {result ? (
         <div className="success-result">
           <InlineNotification

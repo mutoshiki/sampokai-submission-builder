@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { buildResponseRecords, buildRosterRecords, detectMapping } from "./mapping";
-import type { ImportedTable } from "../types";
+import {
+  applyRosterOverrides,
+  buildResponseRecords,
+  buildRosterRecords,
+  changedRosterFields,
+  detectMapping,
+} from "./mapping";
+import type { ImportedTable, RosterRecord } from "../types";
 
 describe("flexible column mapping", () => {
   it("detects long Google Forms roster headers", () => {
@@ -42,5 +48,21 @@ describe("flexible column mapping", () => {
     expect(mapping.studentId).toBeNull();
     expect(mapping.name).toBe(1);
     expect(buildResponseRecords(table, mapping)).toHaveLength(2);
+  });
+
+  it("refreshes untouched fields after a mapping correction", () => {
+    const incomplete: RosterRecord = {
+      rowId: "roster-0", sourceRow: 2, studentId: "s1", name: "Name", nameKana: "",
+      faculty: "", department: "", gender: "male", address: "address", phone: "old-phone", emergencyPhone: "emergency",
+    };
+    const edited = { ...incomplete, phone: "manual-phone" };
+    const overrides = { 0: changedRosterFields(incomplete, edited) };
+    const corrected = { ...incomplete, faculty: "Engineering", department: "Computer Science" };
+
+    expect(applyRosterOverrides([corrected], overrides)[0]).toMatchObject({
+      faculty: "Engineering",
+      department: "Computer Science",
+      phone: "manual-phone",
+    });
   });
 });

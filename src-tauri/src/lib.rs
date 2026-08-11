@@ -23,10 +23,16 @@ enum AppError {
     OfficeUnavailable,
     #[error("書類生成に失敗しました。入力内容と出力先を確認してください。")]
     GenerationFailed,
+    #[error("ルート画像を読み込めません。PNG、JPEG、BMP形式の壊れていない画像を選択してください。")]
+    RouteImageInvalid,
+    #[error("ルート画像を登山計画書へ追加できません。別のPNG、JPEG、BMP画像を選択してください。")]
+    RouteImageInsertFailed,
     #[error("出力先フォルダが無効です。")]
     InvalidOutput,
     #[error("アプリに同梱されたテンプレートが見つかりません。再インストールしてください。")]
     ResourceMissing,
+    #[error("完成フォルダを開けませんでした。")]
+    OpenOutputFailed,
 }
 
 impl Serialize for AppError {
@@ -338,9 +344,29 @@ fn generate_documents(
         .output()
         .map_err(|_| AppError::GenerationFailed)?;
     if !output.status.success() {
+        let error_output = String::from_utf8_lossy(&output.stderr);
+        if error_output.contains("SAMP_IMAGE_READ:") {
+            return Err(AppError::RouteImageInvalid);
+        }
+        if error_output.contains("SAMP_IMAGE_INSERT:") {
+            return Err(AppError::RouteImageInsertFailed);
+        }
         return Err(AppError::GenerationFailed);
     }
     serde_json::from_slice::<GenerationResult>(&output.stdout).map_err(|_| AppError::GenerationFailed)
+}
+
+#[tauri::command]
+fn open_output_folder(path: String) -> Result<(), AppError> {
+    let output_dir = PathBuf::from(path);
+    if !output_dir.is_dir() {
+        return Err(AppError::InvalidOutput);
+    }
+    Command::new("explorer.exe")
+        .arg(&output_dir)
+        .spawn()
+        .map_err(|_| AppError::OpenOutputFailed)?;
+    Ok(())
 }
 
 pub fn run() {
@@ -353,6 +379,7 @@ pub fn run() {
             load_tabular_file,
             check_office,
             generate_documents,
+            open_output_folder,
             allow_route_image_preview,
             debug_defaults
         ])
