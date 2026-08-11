@@ -1,0 +1,55 @@
+{
+  "privacyMode": "full",
+  "project": {
+    "mountainName": "架空岳",
+    "date": "2026-09-12",
+    "reserveDate": "2026-09-13",
+    "submissionDate": "2026-08-10",
+    "area": "架空岳登山口周辺",
+    "noticePlace": "架空県架空市 架空岳",
+    "meetingPlace": "架空大学正門",
+    "meetingTime": "06:00",
+    "weatherPolicy": "雨天時は予備日に延期",
+    "organizer": {
+      "studentId": "26T0001A",
+      "name": "山田 太郎",
+      "faculty": "工学部",
+      "department": "水環境・土木工学科",
+      "phone": "090-0000-0001"
+    }
+  },
+  "plan": {
+    "entryTime": "08:00",
+    "exitTime": "14:30",
+    "totalDurationText": "6時間30分",
+    "ascent": "850",
+    "descent": "850",
+    "distance": "10.8",
+    "itineraryText": "Ⓢ架空岳登山口 08:00⇒（2時間）⇒五合目 10:00～（休憩15分）⇒（1時間）⇒Ⓟ架空岳山頂 11:15～（休憩45分）⇒（2時間30分）⇒Ⓖ架空岳登山口 14:30",
+    "routeImagePath": "tmp/page-renders/【参考例】美ヶ原登山計画書/page-2.png",
+    "escapePlan": "天候の急変や体調不良で続行不能の場合は、往路を引き返して架空岳登山口へ下山する。緊急時は110番通報し、企画者から留守本部へ連絡する。",
+    "equipmentText": "□ザック　□登山靴　□雨具　□防寒着　□ヘッドライト　□地図　□コンパス　□救急用品　□行動食　□飲料（2.0L）",
+    "policeContacts": [
+      { "label": "架空警察署", "phone": "000-000-0110" }
+    ],
+    "lodgeContacts": [
+      { "label": "架空岳山荘", "phone": "000-000-1234" }
+    ],
+    "homeBaseName": "佐藤 花子",
+    "homeBasePhone": "090-0000-9999"
+  },
+  "participants": [
+    { "studentId": "26T0001A", "name": "山田 太郎", "faculty": "工学部", "department": "水環境・土木工学科", "gender": "男", "address": "架空県架空市1-1", "phone": "090-0000-0001", "emergencyPhone": "090-9999-0001" },
+    { "studentId": "25T0002B", "name": "佐藤 花子", "faculty": "人文学部", "department": "人文学科", "gender": "女", "address": "架空県架空市1-2", "phone": "090-0000-0002", "emergencyPhone": "090-9999-0002" },
+    { "studentId": "24T0003C", "name": "鈴木 一郎", "faculty": "教育学部", "department": "学校教育教員養成課程", "gender": "男", "address": "架空県架空市1-3", "phone": "090-0000-0003", "emergencyPhone": "090-9999-0003" },
+    { "studentId": "23T0004D", "name": "高橋 美咲", "faculty": "経法学部", "department": "応用経済学科", "gender": "女", "address": "架空県架空市1-4", "phone": "090-0000-0004", "emergencyPhone": "090-9999-0004" },
+    { "studentId": "22T0005E", "name": "田中 健", "faculty": "理学部", "department": "理学科", "gender": "男", "address": "架空県架空市1-5", "phone": "090-0000-0005", "emergencyPhone": "090-9999-0005" },
+    { "studentId": "21T0006F", "name": "伊藤 彩", "faculty": "医学部", "department": "保健学科", "gender": "女", "address": "架空県架空市1-6", "phone": "090-0000-0006", "emergencyPhone": "090-9999-0006" },
+    { "studentId": "20T0007G", "name": "渡辺 翼", "faculty": "農学部", "department": "農学生命科学科", "gender": "男", "address": "架空県架空市1-7", "phone": "090-0000-0007", "emergencyPhone": "090-9999-0007" },
+    { "studentId": "19T0008H", "name": "中村 葵", "faculty": "繊維学部", "department": "先進繊維・感性工学科", "gender": "女", "address": "架空県架空市1-8", "phone": "090-0000-0008", "emergencyPhone": "090-9999-0008" },
+    { "studentId": "26T0009I", "name": "小林 海", "faculty": "工学部", "department": "電子情報システム工学科", "gender": "男", "address": "架空県架空市1-9", "phone": "090-0000-0009", "emergencyPhone": "090-9999-0009" },
+    { "studentId": "25T0010J", "name": "加藤 桜", "faculty": "工学部", "department": "建築学科", "gender": "女", "address": "架空県架空市1-10", "phone": "090-0000-0010", "emergencyPhone": "090-9999-0010" },
+    { "studentId": "24T0011K", "name": "吉田 岳", "faculty": "工学部", "department": "物質化学科", "gender": "男", "address": "架空県架空市1-11", "phone": "090-0000-0011", "emergencyPhone": "090-9999-0011" },
+    { "studentId": "23T0012L", "name": "山本 泉", "faculty": "工学部", "department": "機械システム工学科", "gender": "女", "address": "架空県架空市1-12", "phone": "090-0000-0012", "emergencyPhone": "090-9999-0012" }
+  ]
+}

@@ -1,0 +1,397 @@
+@use "@carbon/styles/scss/config" with (
+  $css--font-face: false
+);
+@use "@carbon/react";
+@use "@carbon/styles/scss/colors";
+@use "@carbon/styles/scss/spacing" as spacing;
+@use "@carbon/styles/scss/type";
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: colors.$gray-10;
+  color: colors.$gray-100;
+}
+
+.app-root {
+  min-height: 100%;
+  padding-top: 3rem;
+  padding-bottom: 4rem;
+}
+
+.local-only-label {
+  margin-left: auto;
+  padding-right: spacing.$spacing-05;
+  color: colors.$gray-30;
+  @include type.type-style("label-01");
+}
+
+.update-controls {
+  display: flex;
+}
+
+.update-manager__content p {
+  margin: 0 0 spacing.$spacing-03;
+}
+
+.update-manager__content h3 {
+  margin: spacing.$spacing-06 0 spacing.$spacing-03;
+}
+
+.update-manager__notes {
+  white-space: pre-wrap;
+}
+
+.update-manager__error {
+  margin-top: spacing.$spacing-05 !important;
+  color: colors.$red-60;
+}
+
+.debug-controls {
+  display: flex;
+  align-items: center;
+  gap: spacing.$spacing-03;
+  margin-left: auto;
+}
+
+.debug-controls + .local-only-label {
+  margin-left: 0;
+}
+
+.workspace-shell {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  min-height: calc(100vh - 7rem);
+}
+
+.step-rail {
+  position: sticky;
+  top: 3rem;
+  align-self: start;
+  min-height: calc(100vh - 7rem);
+  padding: spacing.$spacing-07 spacing.$spacing-05;
+  background: colors.$white-0;
+  border-right: 1px solid colors.$gray-20;
+}
+
+.step-rail__heading {
+  margin: 0 0 spacing.$spacing-06;
+  @include type.type-style("heading-compact-01");
+}
+
+.main-content {
+  width: 100%;
+  max-width: 90rem;
+  padding: spacing.$spacing-07;
+  margin: 0 auto;
+  background: colors.$white-0;
+}
+
+.action-footer {
+  position: fixed;
+  z-index: 7000;
+  right: 0;
+  bottom: 0;
+  left: 15rem;
+  display: flex;
+  justify-content: flex-end;
+  min-height: 4rem;
+  padding: spacing.$spacing-03 spacing.$spacing-05;
+  background: colors.$gray-10;
+  border-top: 1px solid colors.$gray-30;
+}
+
+.page-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: spacing.$spacing-07;
+  margin-bottom: spacing.$spacing-07;
+  padding-bottom: spacing.$spacing-06;
+  border-bottom: 1px solid colors.$gray-20;
+}
+
+.page-heading h1 {
+  margin: 0 0 spacing.$spacing-03;
+  @include type.type-style("heading-04");
+}
+
+.page-heading p,
+.section-toolbar p,
+.route-uploader p {
+  max-width: 52rem;
+  margin: 0;
+  color: colors.$gray-70;
+  @include type.type-style("body-compact-01");
+}
+
+.source-grid,
+.form-grid,
+.review-settings {
+  display: grid;
+  gap: spacing.$spacing-05;
+}
+
+.source-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: spacing.$spacing-06;
+}
+
+.file-source {
+  min-height: 7.5rem;
+  padding: spacing.$spacing-05;
+  background: colors.$gray-10;
+  border: 1px solid colors.$gray-30;
+}
+
+.file-source__label {
+  margin-bottom: spacing.$spacing-04;
+  @include type.type-style("heading-compact-01");
+}
+
+.mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: spacing.$spacing-05;
+  padding-bottom: spacing.$spacing-05;
+}
+
+.participant-table-section {
+  margin-top: spacing.$spacing-07;
+}
+
+.summary-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: spacing.$spacing-06;
+  padding: spacing.$spacing-04 spacing.$spacing-05;
+  background: colors.$gray-10;
+  border-top: 1px solid colors.$gray-30;
+  @include type.type-style("label-01");
+}
+
+.secondary-text,
+.status-reason,
+.drop-help,
+.path-text {
+  color: colors.$gray-70;
+  @include type.type-style("label-01");
+}
+
+.status-reason {
+  max-width: 18rem;
+  margin-top: spacing.$spacing-02;
+}
+
+.empty-state {
+  margin-top: spacing.$spacing-07;
+  padding: spacing.$spacing-09 spacing.$spacing-07;
+  color: colors.$gray-70;
+  text-align: center;
+  background: colors.$gray-10;
+  border: 1px dashed colors.$gray-40;
+}
+
+.form-grid--two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.form-grid--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.form-grid--five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+.cds--fieldset {
+  margin-bottom: spacing.$spacing-08;
+}
+
+.organizer-picker {
+  max-width: 36rem;
+  margin-bottom: spacing.$spacing-05;
+}
+
+.modal-intro {
+  margin: 0 0 spacing.$spacing-06;
+}
+
+.section-toolbar,
+.contact-editor__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: spacing.$spacing-05;
+  margin-bottom: spacing.$spacing-05;
+}
+
+.section-toolbar h3,
+.contact-editor h3,
+.generated-preview h3,
+.route-uploader h3 {
+  margin: 0 0 spacing.$spacing-02;
+  @include type.type-style("heading-compact-02");
+}
+
+.itinerary-editor,
+.generated-preview,
+.route-uploader,
+.contact-editor {
+  margin-bottom: spacing.$spacing-07;
+}
+
+.itinerary-header,
+.itinerary-row {
+  display: grid;
+  grid-template-columns: 7rem minmax(10rem, 2fr) 8rem 7rem 7rem 8rem;
+  gap: 1px;
+  align-items: end;
+}
+
+.itinerary-header {
+  padding: spacing.$spacing-03;
+  color: colors.$gray-70;
+  background: colors.$gray-20;
+  @include type.type-style("label-01");
+}
+
+.itinerary-row {
+  padding: spacing.$spacing-03;
+  background: colors.$gray-10;
+  border-bottom: 1px solid colors.$gray-30;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  min-height: 2.5rem;
+}
+
+.generated-preview {
+  padding: spacing.$spacing-05;
+  background: colors.$gray-10;
+  border-left: 3px solid colors.$blue-60;
+}
+
+.generated-preview p {
+  margin: 0;
+  line-height: 1.7;
+}
+
+.route-uploader {
+  padding: spacing.$spacing-06;
+  background: colors.$gray-10;
+  border: 1px dashed colors.$gray-50;
+}
+
+.route-uploader p {
+  margin-bottom: spacing.$spacing-05;
+}
+
+.route-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 20rem;
+  margin-top: spacing.$spacing-05;
+  border: 1px solid colors.$gray-30;
+}
+
+.drop-help {
+  margin-top: spacing.$spacing-03;
+}
+
+.equipment-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: spacing.$spacing-04 spacing.$spacing-06;
+  margin-top: spacing.$spacing-06;
+}
+
+.contact-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 3rem;
+  gap: spacing.$spacing-03;
+  align-items: end;
+  margin-bottom: spacing.$spacing-03;
+}
+
+.validation-summary {
+  display: flex;
+  border-top: 1px solid colors.$gray-30;
+  border-bottom: 1px solid colors.$gray-30;
+  margin-bottom: spacing.$spacing-06;
+}
+
+.validation-summary > div {
+  display: flex;
+  align-items: baseline;
+  gap: spacing.$spacing-03;
+  min-width: 10rem;
+  padding: spacing.$spacing-05;
+  border-right: 1px solid colors.$gray-30;
+}
+
+.validation-summary strong { @include type.type-style("heading-03"); }
+.validation-summary span { @include type.type-style("label-01"); }
+
+.issue-list {
+  margin-bottom: spacing.$spacing-07;
+}
+
+.issue-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: spacing.$spacing-03;
+}
+
+.review-settings {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: spacing.$spacing-07;
+}
+
+.review-settings > div {
+  padding: spacing.$spacing-06;
+  background: colors.$gray-10;
+  border-top: 1px solid colors.$gray-40;
+}
+
+.review-settings h2 {
+  margin: 0 0 spacing.$spacing-05;
+  @include type.type-style("heading-compact-02");
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: spacing.$spacing-05;
+  padding: spacing.$spacing-04 0;
+  border-bottom: 1px solid colors.$gray-30;
+}
+
+.setting-row > div {
+  display: grid;
+  gap: spacing.$spacing-02;
+}
+
+.setting-label {
+  @include type.type-style("label-01");
+}
+
+.success-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: spacing.$spacing-04;
+  margin-top: spacing.$spacing-05;
+}
+
+@media (max-width: 1100px) {
+  .workspace-shell { grid-template-columns: 12rem minmax(0, 1fr); }
+  .action-footer { left: 12rem; }
+  .main-content { padding: spacing.$spacing-06; }
+  .form-grid--three,
+  .form-grid--five,
+  .mapping-grid,
+  .equipment-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .itinerary-header,
+  .itinerary-row { grid-template-columns: 6rem minmax(9rem, 2fr) 7rem 6rem 6rem 7rem; }
+}
