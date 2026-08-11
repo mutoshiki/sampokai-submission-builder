@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { getVersion } from "@tauri-apps/api/app";
 import { DocumentExport } from "@carbon/icons-react";
 import { AppShell } from "./components/AppShell";
 import { UpdateManager } from "./components/UpdateManager";
@@ -128,6 +129,7 @@ export default function App() {
   const [validationTarget, setValidationTarget] = useState<ValidationTarget | null>(null);
   const [debugMode, setDebugMode] = useState(false);
   const [debugControlsVisible, setDebugControlsVisible] = useState(false);
+  const [appVersion, setAppVersion] = useState("");
 
   const baseRoster = useMemo(() => buildRosterRecords(rosterTable, rosterMapping), [rosterTable, rosterMapping]);
   const roster = useMemo(
@@ -170,6 +172,11 @@ export default function App() {
 
   useEffect(() => {
     void refreshOffice();
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    void getVersion().then(setAppVersion).catch(() => setAppVersion(""));
   }, []);
 
   useEffect(() => {
@@ -378,6 +385,7 @@ export default function App() {
       onFillDebug={() => void fillDebugData()}
       onClearDebug={clearDebugData}
       headerActions={isTauriRuntime() ? <UpdateManager enabled /> : undefined}
+      appVersion={appVersion}
     >
       {step === 0 ? (
         <ParticipantsStep

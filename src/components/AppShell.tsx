@@ -27,6 +27,7 @@ interface AppShellProps {
   onFillDebug?: () => void;
   onClearDebug?: () => void;
   headerActions?: ReactNode;
+  appVersion?: string;
 }
 
 export function AppShell({
@@ -43,6 +44,7 @@ export function AppShell({
   onFillDebug,
   onClearDebug,
   headerActions,
+  appVersion,
 }: AppShellProps) {
   return (
     <div className="app-root">
@@ -76,6 +78,7 @@ export function AppShell({
         <Content className="main-content">{children}</Content>
       </div>
       <footer className="action-footer">
+        {appVersion ? <span className="app-version">バージョン {appVersion}</span> : null}
         <Button kind="secondary" renderIcon={ArrowLeft} onClick={onBack} disabled={step === 0}>
           戻る
         </Button>
