@@ -50,14 +50,26 @@ export const validateProject = ({
     issues.push(issue("participants-duplicate", "error", "同じ名簿メンバーが重複しています", "重複回答のうち、実際に参加する回答だけを選択してください。", validationTargets.participants.matches));
   }
   participants.forEach((participant, index) => {
-    const missing = [
-      ["学籍番号", participant.studentId], ["氏名", participant.name], ["学部", participant.faculty], ["身体の性別", participant.gender],
-    ].filter(([, value]) => !value);
-    if (privacyMode !== "minimal" && !participant.phone) missing.push(["本人連絡先", ""]);
-    if (privacyMode === "full" && !participant.address) missing.push(["現住所", ""]);
-    if (privacyMode === "full" && !participant.emergencyPhone) missing.push(["緊急連絡先", ""]);
-    if (missing.length) {
-      issues.push(issue(`participant-missing-${index}`, "error", `${participant.name || `参加者${index + 1}`}の情報が不足しています`, `${missing.map(([label]) => label).join("、")}を「情報を確認」から入力してください。`, validationTargets.participants.matches));
+    const missingFields: { key: string; label: string; value: string }[] = [
+      { key: "student-id", label: "学籍番号", value: participant.studentId },
+      { key: "name", label: "氏名", value: participant.name },
+      { key: "faculty", label: "学部", value: participant.faculty },
+      { key: "gender", label: "身体の性別", value: participant.gender },
+    ];
+    if (privacyMode !== "minimal") missingFields.push({ key: "phone", label: "本人連絡先", value: participant.phone });
+    if (privacyMode === "full") {
+      missingFields.push({ key: "address", label: "現住所", value: participant.address });
+      missingFields.push({ key: "emergency-phone", label: "緊急連絡先", value: participant.emergencyPhone });
+    }
+    for (const field of missingFields) {
+      if (field.value) continue;
+      issues.push(issue(
+        `participant-missing-${participant.rowId}-${field.key}`,
+        "error",
+        `${participant.name || `参加者${index + 1}`}の${field.label}が未入力です`,
+        `「情報を確認」から${field.label}を入力してください。`,
+        validationTargets.participants.matches,
+      ));
     }
     if (participant.faculty && !noticeFaculties.has(participant.faculty)) {
       issues.push(issue(`participant-faculty-${index}`, "error", `${participant.name}の学部を登山等届へ集計できません`, "登山等届にある8学部のいずれかを「情報を確認」から選択してください。", validationTargets.participants.matches));
@@ -84,7 +96,7 @@ export const validateProject = ({
   ];
   const missingProject = projectFields.filter((field) => !field.value);
   if (missingProject.length) {
-    issues.push(issue("project-missing", "error", "企画情報に未入力があります", `${missingProject.map((field) => field.label).join("、")}を入力してください。`, missingProject[0].target));
+    issues.push(issue(`project-missing-${missingProject.map((field) => field.target.fieldId).join("-")}`, "error", "企画情報に未入力があります", `${missingProject.map((field) => field.label).join("、")}を入力してください。`, missingProject[0].target));
   }
 
   const planFields: { label: string; value: string; target: ValidationTarget }[] = [
@@ -101,7 +113,7 @@ export const validateProject = ({
   ];
   const missingPlan = planFields.filter((field) => !field.value);
   if (missingPlan.length) {
-    issues.push(issue("plan-missing", "error", "登山計画に未入力があります", `${missingPlan.map((field) => field.label).join("、")}を入力してください。`, missingPlan[0].target));
+    issues.push(issue(`plan-missing-${missingPlan.map((field) => field.target.fieldId).join("-")}`, "error", "登山計画に未入力があります", `${missingPlan.map((field) => field.label).join("、")}を入力してください。`, missingPlan[0].target));
   }
   if (plan.itinerary.length < 2 || plan.itinerary[0]?.kind !== "Start" || plan.itinerary.at(-1)?.kind !== "Goal") {
     issues.push(issue("itinerary-ends", "error", "行程の開始・終了が不完全です", "最初をStart、最後をGoalにした2地点以上の行程を作成してください。", validationTargets.plan.itinerary));
@@ -113,7 +125,7 @@ export const validateProject = ({
     (point, index) => !point.name || !point.arrivalTime || (index < plan.itinerary.length - 1 && !point.travelMinutesToNext),
   );
   if (incompletePoints.length) {
-    issues.push(issue("itinerary-incomplete", "error", "行程地点に未入力があります", "各地点の名称・到着時刻と、最後以外の区間所要時間を入力してください。", validationTargets.plan.itinerary));
+    issues.push(issue(`itinerary-incomplete-${incompletePoints.map((point) => point.id).join("-")}`, "error", "行程地点に未入力があります", "各地点の名称・到着時刻と、最後以外の区間所要時間を入力してください。", validationTargets.plan.itinerary));
   }
   if (plan.equipment.length === 0) {
     issues.push(issue("equipment-none", "error", "持参物が選択されていません", "必要な持参物を1つ以上選択してください。", validationTargets.plan.equipment));
