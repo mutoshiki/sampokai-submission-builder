@@ -242,7 +242,7 @@ export default function App() {
     const label = `project-${id}`;
     const existing = await WebviewWindow.getByLabel(label);
     if (existing) {
-      await existing.show();
+      if (await existing.isMinimized()) await existing.unminimize();
       await existing.setFocus();
       return;
     }
