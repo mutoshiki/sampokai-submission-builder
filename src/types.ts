@@ -34,6 +34,13 @@ export interface RosterRecord {
   emergencyPhone: string;
 }
 
+export type ParticipantField = Exclude<keyof RosterRecord, "rowId" | "sourceRow" | "nameKana" | "department">;
+
+export interface ResolvedParticipant {
+  rosterIndex: number;
+  participant: RosterRecord;
+}
+
 export interface ResponseRecord {
   rowId: string;
   sourceRow: number;
@@ -123,6 +130,11 @@ export interface ValidationTarget {
   step: StepId;
   fieldId: string;
   tabIndex?: number;
+  participant?: {
+    rosterIndex: number;
+    rowId: string;
+    field: ParticipantField;
+  };
 }
 
 export interface ValidationIssue {

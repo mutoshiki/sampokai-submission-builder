@@ -1,4 +1,17 @@
-import type { ValidationTarget } from "../types";
+import type { ParticipantField, ValidationTarget } from "../types";
+
+export const participantEditorFieldId = (rowId: string, field: ParticipantField) =>
+  `participant-${rowId}-${field}`;
+
+export const participantValidationTarget = (
+  rosterIndex: number,
+  rowId: string,
+  field: ParticipantField,
+): ValidationTarget => ({
+  step: 0,
+  fieldId: participantEditorFieldId(rowId, field),
+  participant: { rosterIndex, rowId, field },
+});
 
 export const validationTargets = {
   participants: {

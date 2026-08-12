@@ -79,10 +79,7 @@ export function ReviewStep({
   return (
     <section aria-labelledby="review-heading">
       <div className="page-heading">
-        <div>
-          <h1 id="review-heading">確認・出力</h1>
-          <p>必須項目と書類間の整合性を確認してから、提出書類をまとめて作成します。</p>
-        </div>
+        <h1 id="review-heading">確認・出力</h1>
       </div>
 
       <div className="validation-summary">
@@ -116,7 +113,7 @@ export function ReviewStep({
         ))}
       </div>
 
-      <TableContainer title="登山等届の学部別参加者集計" description="確定した参加者の身体の性別を男子・女子欄へ集計します。">
+      <TableContainer aria-label="学部別参加者数">
         <Table size="sm">
           <TableHead>
             <TableRow>
@@ -135,9 +132,9 @@ export function ReviewStep({
 
       <div className="review-settings">
         <div>
-          <h2>参加者名簿の個人情報欄</h2>
           <RadioButtonGroup
             name="privacy-mode"
+            legendText="個人情報の記載方法"
             orientation="vertical"
             valueSelected={privacyMode}
             onChange={(value) => onPrivacyChange(value as PrivacyMode)}
@@ -147,8 +144,7 @@ export function ReviewStep({
             <RadioButton value="minimal" id="privacy-minimal" labelText="最小限：現住所・本人連絡先・緊急連絡先をすべて空欄" />
           </RadioButtonGroup>
         </div>
-        <div>
-          <h2>出力環境</h2>
+        <div aria-label="出力先">
           <div className="setting-row">
             <div>
               <span className="setting-label">出力先</span>

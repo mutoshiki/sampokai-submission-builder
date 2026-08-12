@@ -33,12 +33,46 @@ const plan: PlanInfo = {
 describe("participant validation", () => {
   it("removes only the faculty issue after faculty is corrected", () => {
     const validationInput = {
-      selectedMatches: [selectedMatch], project, plan, outputRoot: "C:/output", privacyMode: "full",
+      selectedMatches: [selectedMatch], project, plan, outputRoot: "C:/output", privacyMode: "full" as const,
     };
-    const before = validateProject({ ...validationInput, participants: [participant("")] });
-    const after = validateProject({ ...validationInput, participants: [participant("工学部")] });
+    const before = validateProject({ ...validationInput, participants: [{ rosterIndex: 0, participant: participant("") }] });
+    const after = validateProject({ ...validationInput, participants: [{ rosterIndex: 0, participant: participant("工学部") }] });
 
-    expect(before.map((entry) => entry.id)).toContain("participant-missing-roster-0-faculty");
-    expect(after.map((entry) => entry.id)).not.toContain("participant-missing-roster-0-faculty");
+    expect(before.map((entry) => entry.id)).toContain("participant-roster-0-faculty");
+    expect(before.find((entry) => entry.id === "participant-roster-0-faculty")?.target).toMatchObject({
+      step: 0,
+      participant: { rosterIndex: 0, rowId: "roster-0", field: "faculty" },
+    });
+    expect(after.map((entry) => entry.id)).not.toContain("participant-roster-0-faculty");
+  });
+
+  it("keeps other participant issues while one participant is corrected", () => {
+    const mina = { ...participant(""), rowId: "roster-1", name: "Test Mina" };
+    const validationInput = {
+      selectedMatches: [selectedMatch, { ...selectedMatch, response: { ...selectedMatch.response, rowId: "response-1" }, rosterIndex: 1 }],
+      project,
+      plan,
+      outputRoot: "C:/output",
+      privacyMode: "full" as const,
+    };
+    const before = validateProject({
+      ...validationInput,
+      participants: [{ rosterIndex: 0, participant: participant("") }, { rosterIndex: 1, participant: mina }],
+    });
+    const after = validateProject({
+      ...validationInput,
+      participants: [{ rosterIndex: 0, participant: participant("工学部") }, { rosterIndex: 1, participant: mina }],
+    });
+
+    expect(before.map((entry) => entry.id)).toEqual(expect.arrayContaining([
+      "participant-roster-0-faculty",
+      "participant-roster-1-faculty",
+    ]));
+    expect(after.map((entry) => entry.id)).not.toContain("participant-roster-0-faculty");
+    expect(after.find((entry) => entry.id === "participant-roster-1-faculty")?.target?.participant).toEqual({
+      rosterIndex: 1,
+      rowId: "roster-1",
+      field: "faculty",
+    });
   });
 });

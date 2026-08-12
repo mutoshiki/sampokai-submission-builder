@@ -28,10 +28,7 @@ export function ProjectStep({ project, roster, onChange, focusTarget, onFocusHan
   return (
     <section aria-labelledby="project-heading">
       <div className="page-heading">
-        <div>
-          <h1 id="project-heading">企画情報</h1>
-          <p>3つの提出書類で共通する情報を一度だけ入力します。</p>
-        </div>
+        <h1 id="project-heading">企画情報</h1>
       </div>
 
       <FormGroup legendText="基本情報">

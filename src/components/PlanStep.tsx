@@ -107,8 +107,7 @@ export function PlanStep({ plan, roster, onChange, onPickRoute, focusTarget, onF
               {duration ? <InlineNotification kind="info" title={`入山から下山まで ${duration}`} subtitle="休憩を含む予定時間として登山計画書へ反映します。" hideCloseButton lowContrast /> : null}
             </FormGroup>
             <ItineraryEditor points={plan.itinerary} onChange={(itinerary) => update("itinerary", itinerary)} />
-            <div className="generated-preview">
-              <h3>登山計画書へ入る行程文</h3>
+            <div className="generated-preview" aria-label="行程文プレビュー">
               <p>{itineraryText || "地点を入力すると行程文が表示されます。"}</p>
             </div>
           </TabPanel>

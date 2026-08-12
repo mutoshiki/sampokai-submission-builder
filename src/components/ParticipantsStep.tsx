@@ -104,16 +104,19 @@ export function ParticipantsStep(props: ParticipantsStepProps) {
     props.onSelectionChange(next);
   };
   useEffect(() => {
-    if (props.focusTarget && focusValidationTarget(props.focusTarget)) props.onFocusHandled();
-  }, [props.focusTarget, props.onFocusHandled]);
+    const target = props.focusTarget;
+    if (!target) return;
+    if (target.participant && editIndex !== target.participant.rosterIndex) {
+      setEditIndex(target.participant.rosterIndex);
+      return;
+    }
+    if (focusValidationTarget(target)) props.onFocusHandled();
+  }, [editIndex, props.focusTarget, props.onFocusHandled]);
 
   return (
     <section aria-labelledby="participants-heading">
       <div className="page-heading">
-        <div>
-          <h1 id="participants-heading">参加者</h1>
-          <p>ローカルファイルを読み込み、今回参加する人だけを安全に全体名簿と照合します。</p>
-        </div>
+        <h1 id="participants-heading">参加者</h1>
       </div>
 
       {props.error ? <InlineNotification kind="error" title="ファイルを読み込めませんでした" subtitle={props.error} hideCloseButton lowContrast /> : null}
@@ -252,6 +255,11 @@ export function ParticipantsStep(props: ParticipantsStepProps) {
       <ParticipantEditorModal
         open={editIndex !== null}
         participant={editIndex === null ? null : props.roster[editIndex]}
+        invalidField={
+          props.focusTarget?.participant?.rosterIndex === editIndex
+            ? props.focusTarget.participant.field
+            : null
+        }
         onClose={() => setEditIndex(null)}
         onSave={(participant) => {
           if (editIndex !== null) props.onParticipantOverride(editIndex, participant);

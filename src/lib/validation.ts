@@ -1,16 +1,14 @@
 import type {
   MatchResult,
   PlanInfo,
+  PrivacyMode,
   ProjectInfo,
-  RosterRecord,
+  ResolvedParticipant,
   ValidationIssue,
   ValidationTarget,
 } from "../types";
-import { validationTargets } from "./validationTargets";
-
-const noticeFaculties = new Set([
-  "人文学部", "教育学部", "経法学部", "理学部", "医学部", "工学部", "農学部", "繊維学部",
-]);
+import { participantFieldError, participantFieldLabel, participantValidationFields } from "./participantValidation";
+import { participantValidationTarget, validationTargets } from "./validationTargets";
 
 const issue = (
   id: string,
@@ -27,11 +25,11 @@ const parseTime = (value: string) => {
 
 export interface ValidationInput {
   selectedMatches: MatchResult[];
-  participants: RosterRecord[];
+  participants: ResolvedParticipant[];
   project: ProjectInfo;
   plan: PlanInfo;
   outputRoot: string;
-  privacyMode: string;
+  privacyMode: PrivacyMode;
 }
 
 export const validateProject = ({
@@ -49,33 +47,17 @@ export const validateProject = ({
   if (rosterIndices.some((value, index) => rosterIndices.indexOf(value) !== index)) {
     issues.push(issue("participants-duplicate", "error", "同じ名簿メンバーが重複しています", "重複回答のうち、実際に参加する回答だけを選択してください。", validationTargets.participants.matches));
   }
-  participants.forEach((participant, index) => {
-    const missingFields: { key: string; label: string; value: string }[] = [
-      { key: "student-id", label: "学籍番号", value: participant.studentId },
-      { key: "name", label: "氏名", value: participant.name },
-      { key: "faculty", label: "学部", value: participant.faculty },
-      { key: "gender", label: "身体の性別", value: participant.gender },
-    ];
-    if (privacyMode !== "minimal") missingFields.push({ key: "phone", label: "本人連絡先", value: participant.phone });
-    if (privacyMode === "full") {
-      missingFields.push({ key: "address", label: "現住所", value: participant.address });
-      missingFields.push({ key: "emergency-phone", label: "緊急連絡先", value: participant.emergencyPhone });
-    }
-    for (const field of missingFields) {
-      if (field.value) continue;
+  participants.forEach(({ participant, rosterIndex }, index) => {
+    for (const field of participantValidationFields(privacyMode)) {
+      const error = participantFieldError(participant, field);
+      if (!error) continue;
       issues.push(issue(
-        `participant-missing-${participant.rowId}-${field.key}`,
+        `participant-${participant.rowId}-${field}`,
         "error",
-        `${participant.name || `参加者${index + 1}`}の${field.label}が未入力です`,
-        `「情報を確認」から${field.label}を入力してください。`,
-        validationTargets.participants.matches,
+        `${participant.name || `参加者${index + 1}`}の${participantFieldLabel(field)}を確認してください`,
+        `「情報を確認」から${error}。`,
+        participantValidationTarget(rosterIndex, participant.rowId, field),
       ));
-    }
-    if (participant.faculty && !noticeFaculties.has(participant.faculty)) {
-      issues.push(issue(`participant-faculty-${index}`, "error", `${participant.name}の学部を登山等届へ集計できません`, "登山等届にある8学部のいずれかを「情報を確認」から選択してください。", validationTargets.participants.matches));
-    }
-    if (participant.gender && !participant.gender.startsWith("男") && !participant.gender.startsWith("女")) {
-      issues.push(issue(`participant-gender-${index}`, "error", `${participant.name}の身体の性別を集計できません`, "登山等届の男子・女子欄へ反映する値を「情報を確認」から選択してください。", validationTargets.participants.matches));
     }
   });
 

@@ -37,7 +37,6 @@ export function ItineraryEditor({ points, onChange }: ItineraryEditorProps) {
       <div className="section-toolbar">
         <div>
           <h3>行程地点</h3>
-          <p>区間所要時間は、この地点から次の地点までの時間です。</p>
         </div>
         <Button kind="tertiary" size="sm" renderIcon={Add} onClick={addPoint}>地点を追加</Button>
       </div>

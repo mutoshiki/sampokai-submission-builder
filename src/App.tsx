@@ -21,6 +21,7 @@ import {
   emptyMapping,
 } from "./lib/mapping";
 import { findDuplicateResponseIds, matchResponses } from "./lib/matching";
+import { resolveSelectedParticipants } from "./lib/participants";
 import { validateProject } from "./lib/validation";
 import type {
   ColumnMapping,
@@ -173,9 +174,13 @@ export default function App() {
     () => matches.filter((match) => selectedIds.has(match.response.rowId)),
     [matches, selectedIds],
   );
-  const participants = useMemo(
-    () => selectedMatches.flatMap((match) => (match.rosterIndex === null ? [] : [roster[match.rosterIndex]])),
+  const resolvedParticipants = useMemo(
+    () => resolveSelectedParticipants(selectedMatches, roster),
     [selectedMatches, roster],
+  );
+  const participants = useMemo(
+    () => resolvedParticipants.map(({ participant }) => participant),
+    [resolvedParticipants],
   );
   const currentProject = useMemo(() => {
     const rosterIndex = project.organizer.rosterIndex;
@@ -194,8 +199,8 @@ export default function App() {
     };
   }, [project, roster]);
   const issues = useMemo(
-    () => validateProject({ selectedMatches, participants, project: currentProject, plan, outputRoot, privacyMode }),
-    [selectedMatches, participants, currentProject, plan, outputRoot, privacyMode],
+    () => validateProject({ selectedMatches, participants: resolvedParticipants, project: currentProject, plan, outputRoot, privacyMode }),
+    [selectedMatches, resolvedParticipants, currentProject, plan, outputRoot, privacyMode],
   );
 
   useEffect(() => {
