@@ -19,14 +19,16 @@ export function ParticipantEditorModal({ open, participant, invalidField, onClos
   const [highlightedField, setHighlightedField] = useState<ParticipantField | null>(null);
 
   useEffect(() => {
+    if (!open || !participant) return;
     setDraft(participant);
     setHighlightedField(invalidField);
-  }, [participant?.rowId]);
+  }, [open, participant, invalidField]);
   useEffect(() => {
     if (invalidField) setHighlightedField(invalidField);
   }, [invalidField]);
 
-  if (!draft) return null;
+  // Unmount closed modal. Carbon modal focus trap must not remain mounted after close.
+  if (!open || !participant || !draft) return null;
   const update = (key: keyof RosterRecord, value: string) => setDraft((current) => (current ? { ...current, [key]: value } : current));
   const fieldError = (field: ParticipantField) => highlightedField === field ? participantFieldError(draft, field) : undefined;
 

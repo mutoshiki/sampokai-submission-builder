@@ -260,10 +260,14 @@ export function ParticipantsStep(props: ParticipantsStepProps) {
             ? props.focusTarget.participant.field
             : null
         }
-        onClose={() => setEditIndex(null)}
+        onClose={() => {
+          setEditIndex(null);
+          props.onFocusHandled();
+        }}
         onSave={(participant) => {
           if (editIndex !== null) props.onParticipantOverride(editIndex, participant);
           setEditIndex(null);
+          props.onFocusHandled();
         }}
       />
     </section>

@@ -117,6 +117,22 @@ body {
   border-top: 1px solid colors.$gray-30;
 }
 
+.scroll-cue {
+  position: absolute;
+  top: calc(-1 * #{spacing.$spacing-06});
+  left: 50%;
+  display: grid;
+  width: spacing.$spacing-06;
+  height: spacing.$spacing-06;
+  place-items: center;
+  color: colors.$gray-70;
+  pointer-events: none;
+  background: colors.$gray-10;
+  border: 1px solid colors.$gray-30;
+  border-bottom: 0;
+  transform: translateX(-50%);
+}
+
 .action-footer__context,
 .action-footer__steps {
   display: flex;

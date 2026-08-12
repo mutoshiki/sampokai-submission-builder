@@ -9,6 +9,7 @@ import {
 import { ArrowLeft, ArrowRight } from "@carbon/icons-react";
 import type { StepId } from "../types";
 import { AppHeader } from "./AppHeader";
+import { ScrollCue } from "./ScrollCue";
 
 const steps = ["参加者", "企画情報", "登山計画", "確認・出力"];
 
@@ -80,6 +81,7 @@ export function AppShell({
         <Content className="main-content">{children}</Content>
       </div>
       <footer className="action-footer">
+        <ScrollCue />
         <div className="action-footer__context">
           <Button kind="ghost" renderIcon={ArrowLeft} onClick={onReturnToProjects}>企画一覧へ戻る</Button>
           {saveStatus ? <div className="action-footer__save-status" aria-live="polite">{saveIndicator}</div> : null}
