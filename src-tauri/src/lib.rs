@@ -4,8 +4,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use tauri::{path::BaseDirectory, AppHandle, Manager};
+use std::process::{Command, ExitStatus, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
+use tauri::{ipc::Channel, path::BaseDirectory, AppHandle, Manager};
 use tempfile::NamedTempFile;
 
 #[cfg(target_os = "windows")]
@@ -23,6 +25,12 @@ enum AppError {
     OfficeUnavailable,
     #[error("書類生成に失敗しました。入力内容と出力先を確認してください。")]
     GenerationFailed,
+    #[error("書類生成が{timeout_seconds}秒を超えたため停止しました。停止工程: {stage}。Wordを終了処理したため、もう一度生成できます。")]
+    GenerationTimedOut { timeout_seconds: u64, stage: String },
+    #[error("書類生成に失敗しました。停止工程: {stage}。詳細: {detail}")]
+    GenerationFailedAt { stage: String, detail: String },
+    #[error("書類生成後のWord終了処理に失敗しました。停止工程: {stage}。詳細: {detail}")]
+    GenerationCleanupFailed { stage: String, detail: String },
     #[error("ルート画像を読み込めません。PNG、JPEG、BMP形式の壊れていない画像を選択してください。")]
     RouteImageInvalid,
     #[error("ルート画像を登山計画書へ追加できません。別のPNG、JPEG、BMP画像を選択してください。")]
@@ -72,6 +80,30 @@ struct GenerationResult {
   output_dir: String,
   files: Vec<String>,
 }
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase", tag = "event", content = "data")]
+enum GenerationEvent {
+    Progress { stage: String },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerationProgress {
+    stage: String,
+}
+
+struct TimedCommandOutput {
+    status: ExitStatus,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    timed_out: bool,
+    last_stage: String,
+}
+
+const GENERATION_TIMEOUT_SECONDS: u64 = 180;
+const CLEANUP_TIMEOUT_SECONDS: u64 = 20;
+const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -391,6 +423,69 @@ fn hidden_powershell() -> Command {
     command
 }
 
+fn read_generation_stage(path: &Path, fallback: &str) -> String {
+    fs::read(path).ok()
+        .and_then(|bytes| serde_json::from_slice::<GenerationProgress>(&bytes).ok())
+        .map(|progress| progress.stage)
+        .filter(|stage| !stage.trim().is_empty())
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn emit_generation_stage(channel: Option<&Channel<GenerationEvent>>, path: Option<&Path>, last_stage: &mut String) {
+    let Some(path) = path else { return; };
+    let stage = read_generation_stage(path, last_stage);
+    if stage == *last_stage { return; }
+    *last_stage = stage.clone();
+    if let Some(channel) = channel { let _ = channel.send(GenerationEvent::Progress { stage }); }
+}
+
+fn run_timed_command(
+    command: &mut Command,
+    timeout: Duration,
+    progress_path: Option<&Path>,
+    progress_channel: Option<&Channel<GenerationEvent>>,
+    initial_stage: &str,
+) -> std::io::Result<TimedCommandOutput> {
+    let stdout_file = NamedTempFile::new()?;
+    let stderr_file = NamedTempFile::new()?;
+    command.stdout(Stdio::from(stdout_file.reopen()?)).stderr(Stdio::from(stderr_file.reopen()?));
+    let mut child = command.spawn()?;
+    let started = Instant::now();
+    let mut last_stage = initial_stage.to_string();
+    if let Some(channel) = progress_channel { let _ = channel.send(GenerationEvent::Progress { stage: last_stage.clone() }); }
+    let (status, timed_out) = loop {
+        emit_generation_stage(progress_channel, progress_path, &mut last_stage);
+        if let Some(status) = child.try_wait()? { break (status, false); }
+        if started.elapsed() >= timeout { let _ = child.kill(); break (child.wait()?, true); }
+        thread::sleep(PROCESS_POLL_INTERVAL);
+    };
+    emit_generation_stage(progress_channel, progress_path, &mut last_stage);
+    Ok(TimedCommandOutput {
+        status,
+        stdout: fs::read(stdout_file.path())?,
+        stderr: fs::read(stderr_file.path())?,
+        timed_out,
+        last_stage,
+    })
+}
+
+fn error_detail(stderr: &[u8]) -> String {
+    let compact = String::from_utf8_lossy(stderr).lines().map(str::trim)
+        .filter(|line| !line.is_empty()).collect::<Vec<_>>().join(" ");
+    if compact.is_empty() { return "WordまたはPowerShellが処理を完了できませんでした。".to_string(); }
+    compact.chars().take(800).collect()
+}
+
+fn cleanup_word_process(cleanup_script: &Path, process_info_path: &Path) -> Result<(), String> {
+    let output = run_timed_command(
+        hidden_powershell().arg("-File").arg(cleanup_script).arg("-ProcessInfoPath").arg(process_info_path),
+        Duration::from_secs(CLEANUP_TIMEOUT_SECONDS), None, None, "Word終了処理",
+    ).map_err(|error| error.to_string())?;
+    if output.timed_out { return Err(format!("Word終了処理が{}秒以内に完了しませんでした。", CLEANUP_TIMEOUT_SECONDS)); }
+    if !output.status.success() { return Err(error_detail(&output.stderr)); }
+    Ok(())
+}
+
 #[tauri::command]
 fn check_office(app: AppHandle) -> Result<OfficeStatus, AppError> {
     let script = resolve_resource(
@@ -417,6 +512,7 @@ fn generate_documents(
     app: AppHandle,
     payload: Value,
     output_root: String,
+    on_event: Channel<GenerationEvent>,
 ) -> Result<GenerationResult, AppError> {
     let output_root = PathBuf::from(output_root);
     if !output_root.is_dir() {
@@ -429,23 +525,34 @@ fn generate_documents(
             "scripts/generate-documents.ps1",
         ],
     )?;
+    let cleanup_script = resolve_resource(
+        &app,
+        &["resources/scripts/cleanup-word-process.ps1", "scripts/cleanup-word-process.ps1"],
+    )?;
     let template_dir = resolve_resource(
         &app,
         &["resources/templates", "templates"],
     )?;
     let mut payload_file = NamedTempFile::new().map_err(|_| AppError::GenerationFailed)?;
     serde_json::to_writer(&mut payload_file, &payload).map_err(|_| AppError::GenerationFailed)?;
-    let output = hidden_powershell()
-        .arg("-File")
-        .arg(script)
-        .arg("-PayloadPath")
-        .arg(payload_file.path())
-        .arg("-TemplateDirectory")
-        .arg(template_dir)
-        .arg("-OutputRoot")
-        .arg(&output_root)
-        .output()
-        .map_err(|_| AppError::GenerationFailed)?;
+    let work_dir = tempfile::tempdir().map_err(|_| AppError::GenerationFailed)?;
+    let progress_path = work_dir.path().join("progress.json");
+    let process_info_path = work_dir.path().join("word-process.json");
+    let output = run_timed_command(
+        hidden_powershell().arg("-File").arg(script)
+            .arg("-PayloadPath").arg(payload_file.path())
+            .arg("-TemplateDirectory").arg(template_dir)
+            .arg("-OutputRoot").arg(&output_root)
+            .arg("-ProgressPath").arg(&progress_path)
+            .arg("-ProcessInfoPath").arg(&process_info_path),
+        Duration::from_secs(GENERATION_TIMEOUT_SECONDS), Some(&progress_path), Some(&on_event), "生成準備中",
+    ).map_err(|_| AppError::GenerationFailed)?;
+    if let Err(detail) = cleanup_word_process(&cleanup_script, &process_info_path) {
+        return Err(AppError::GenerationCleanupFailed { stage: output.last_stage, detail });
+    }
+    if output.timed_out {
+        return Err(AppError::GenerationTimedOut { timeout_seconds: GENERATION_TIMEOUT_SECONDS, stage: output.last_stage });
+    }
     if !output.status.success() {
         let error_output = String::from_utf8_lossy(&output.stderr);
         if error_output.contains("SAMP_IMAGE_READ:") {
@@ -454,9 +561,12 @@ fn generate_documents(
         if error_output.contains("SAMP_IMAGE_INSERT:") {
             return Err(AppError::RouteImageInsertFailed);
         }
-        return Err(AppError::GenerationFailed);
+        return Err(AppError::GenerationFailedAt { stage: output.last_stage, detail: error_detail(&output.stderr) });
     }
-    serde_json::from_slice::<GenerationResult>(&output.stdout).map_err(|_| AppError::GenerationFailed)
+    serde_json::from_slice::<GenerationResult>(&output.stdout).map_err(|_| AppError::GenerationFailedAt {
+        stage: output.last_stage,
+        detail: "生成結果を読み取れませんでした。".to_string(),
+    })
 }
 
 #[tauri::command]
@@ -558,5 +668,17 @@ mod tests {
         assert_eq!(table.total_rows, 1);
         assert_eq!(table.columns[0], "回答者コード");
         assert_eq!(table.rows[0][1], "架空 花子");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn hanging_powershell_is_terminated_at_timeout() {
+        let started = Instant::now();
+        let output = run_timed_command(
+            hidden_powershell().args(["-Command", "Start-Sleep -Seconds 30"]),
+            Duration::from_millis(500), None, None, "タイムアウト試験",
+        ).expect("PowerShell timeout");
+        assert!(output.timed_out);
+        assert!(started.elapsed() < Duration::from_secs(5));
     }
 }

@@ -12,6 +12,7 @@ After explicit publish approval, use current release branch. Do not require `gh`
 3. `git push origin <current-branch>`.
 4. Create matching `v<version>` tag, then `git push origin v<version>`.
 5. Wait for `Release Windows app` GitHub Actions success, then verify GitHub Release/latest updater artifacts.
+6. On the real Windows machine, verify the running executable's absolute path and version, plus every relevant Start Menu/Desktop shortcut target. A legacy install directory or shortcut can remain after a product-name change; the updater may install successfully but relaunch the old executable, causing repeated update prompts and old bugs to persist.
 
 # Communication
 

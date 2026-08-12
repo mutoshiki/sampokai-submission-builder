@@ -42,7 +42,8 @@
       "nsis": {
         "installMode": "currentUser",
         "displayLanguageSelector": false,
-        "languages": ["Japanese"]
+        "languages": ["Japanese"],
+        "installerHooks": "./windows/installer-hooks.nsh"
       }
     }
   },

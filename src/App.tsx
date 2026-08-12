@@ -121,6 +121,7 @@ export default function App() {
   const [loadingResponses, setLoadingResponses] = useState(false);
   const [importError, setImportError] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [generationStage, setGenerationStage] = useState("");
   const [generationError, setGenerationError] = useState("");
   const [outputOpenError, setOutputOpenError] = useState("");
   const [result, setResult] = useState<GenerationResult | null>(null);
@@ -486,9 +487,10 @@ export default function App() {
     if (issues.some((issue) => issue.severity === "error") || generating) return;
     setGenerationError("");
     setResult(null);
+    setGenerationStage("生成準備中");
     setGenerating(true);
     try {
-      setResult(await generateDocuments(buildPayload(), outputRoot));
+      setResult(await generateDocuments(buildPayload(), outputRoot, setGenerationStage));
     } catch (error) {
       setGenerationError(String(error));
     } finally {
@@ -575,6 +577,7 @@ export default function App() {
           privacyMode={privacyMode}
           outputRoot={outputRoot}
           generating={generating}
+          generationStage={generationStage}
           result={result}
           generationError={generationError}
           outputOpenError={outputOpenError}

@@ -1,7 +1,9 @@
 ﻿param(
     [Parameter(Mandatory = $true)][string]$PayloadPath,
     [Parameter(Mandatory = $true)][string]$TemplateDirectory,
-    [Parameter(Mandatory = $true)][string]$OutputRoot
+    [Parameter(Mandatory = $true)][string]$OutputRoot,
+    [Parameter(Mandatory = $true)][string]$ProgressPath,
+    [Parameter(Mandatory = $true)][string]$ProcessInfoPath
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,6 +17,104 @@ $wdColorBlack = 0
 $wdColorRed = 255
 $wdColorGreen = 65280
 $wdColorBlue = 16711680
+
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class SampokaiWordNative {
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+}
+"@
+
+function Write-JsonAtomic {
+    param([string]$Path, $Value)
+    $temporaryPath = "$Path.$PID.tmp"
+    $json = $Value | ConvertTo-Json -Depth 6 -Compress
+    [IO.File]::WriteAllText($temporaryPath, $json, [Text.UTF8Encoding]::new($false))
+    Move-Item -LiteralPath $temporaryPath -Destination $Path -Force
+}
+
+function Set-GenerationStage {
+    param([string]$Stage)
+    $script:currentGenerationStage = $Stage
+    Write-JsonAtomic -Path $ProgressPath -Value ([ordered]@{
+        stage = $Stage
+        updatedAtUtc = [DateTime]::UtcNow.ToString("o")
+    })
+}
+
+function Get-ProcessIdentity {
+    param([int]$ProcessId)
+    $process = Get-Process -Id $ProcessId -ErrorAction Stop
+    $cim = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
+    return [ordered]@{
+        pid = $process.Id
+        startTimeUtcTicks = $process.StartTime.ToUniversalTime().Ticks
+        name = $process.ProcessName
+        commandLine = if ($null -ne $cim) { [string]$cim.CommandLine } else { "" }
+    }
+}
+
+function Get-AutomationWordProcesses {
+    $results = @()
+    Get-CimInstance Win32_Process -Filter "Name = 'WINWORD.EXE'" -ErrorAction SilentlyContinue |
+        Where-Object { [string]$_.CommandLine -match '(?i)(^|\s)/Automation(\s|$)' } |
+        ForEach-Object {
+            try { $results += ,(Get-ProcessIdentity -ProcessId ([int]$_.ProcessId)) } catch {}
+        }
+    return @($results)
+}
+
+function Get-OfficeWriterProcesses {
+    $results = @()
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { [string]$_.Name -in @("WINWORD.EXE", "wps.exe") } |
+        ForEach-Object {
+            try { $results += ,(Get-ProcessIdentity -ProcessId ([int]$_.ProcessId)) } catch {}
+        }
+    return @($results)
+}
+
+function Save-WordProcessState {
+    Write-JsonAtomic -Path $ProcessInfoPath -Value $script:wordProcessState
+}
+
+function Set-WordProcessOwner {
+    param([int]$ProcessId, [string]$Source)
+    try {
+        $identity = Get-ProcessIdentity -ProcessId $ProcessId
+        $identity.source = $Source
+        $script:wordProcessState.ownedWord = $identity
+        Save-WordProcessState
+    }
+    catch {}
+}
+
+function Register-NewAutomationWordProcess {
+    $candidates = @(Get-AutomationWordProcesses | Where-Object {
+        $candidate = $_
+        @($script:wordProcessState.baselineAutomation | Where-Object {
+            [int]$_.pid -eq [int]$candidate.pid -and [int64]$_.startTimeUtcTicks -eq [int64]$candidate.startTimeUtcTicks
+        }).Count -eq 0
+    })
+    if ($candidates.Count -eq 1) {
+        Set-WordProcessOwner -ProcessId ([int]$candidates[0].pid) -Source "automationDiff"
+    }
+}
+
+function Register-DocumentWordProcess {
+    param($Document)
+    try {
+        [uint32]$processId = 0
+        $windowHandle = [IntPtr][int64]$Document.ActiveWindow.Hwnd
+        [void][SampokaiWordNative]::GetWindowThreadProcessId($windowHandle, [ref]$processId)
+        if ($processId -gt 0) {
+            Set-WordProcessOwner -ProcessId ([int]$processId) -Source "windowHwnd"
+        }
+    }
+    catch {}
+}
 
 function Get-JapaneseDay {
     param([datetime]$Date)
@@ -368,6 +468,15 @@ function Get-ContactText {
     return ($lines -join "`n")
 }
 
+Set-GenerationStage "入力内容を確認中"
+$script:wordProcessState = [ordered]@{
+    generationStartUtcTicks = [DateTime]::UtcNow.Ticks
+    baselineAutomation = @(Get-AutomationWordProcesses)
+    baselineWriters = @(Get-OfficeWriterProcesses)
+    ownedWord = $null
+}
+Save-WordProcessState
+
 $payload = Get-Content -Raw -Encoding UTF8 -LiteralPath $PayloadPath | ConvertFrom-Json
 $templateDirectory = (Resolve-Path -LiteralPath $TemplateDirectory).Path
 $outputRoot = (Resolve-Path -LiteralPath $OutputRoot).Path
@@ -382,6 +491,7 @@ $planPdfPath = Join-Path $outputDirectory "02_${safeMountain}登山計画書.pdf
 $noticePath = Join-Path $outputDirectory "03_${safeMountain}_登山等届.docx"
 
 try {
+    Set-GenerationStage "ルート画像を確認中"
     # Tauri can return Windows extended-length paths (\\?\C:\...).  Resolve-Path
     # represents these with a PowerShell provider prefix, which System.Drawing and
     # Word cannot open. Convert back to a normal filesystem path before probing.
@@ -393,6 +503,7 @@ try {
 }
 catch { throw "SAMP_IMAGE_READ: ルート画像を読み込めません。PNG、JPEG、BMP形式の壊れていない画像を選択してください。詳細: $($_.Exception.Message)" }
 
+Set-GenerationStage "テンプレートを準備中"
 Copy-Item -LiteralPath (Join-Path $templateDirectory "participant-roster.docx") -Destination $participantPath
 Copy-Item -LiteralPath (Join-Path $templateDirectory "plan-generation-template.docx") -Destination $planPath
 Copy-Item -LiteralPath (Join-Path $templateDirectory "hiking-notice.docx") -Destination $noticePath
@@ -400,11 +511,15 @@ Copy-Item -LiteralPath (Join-Path $templateDirectory "hiking-notice.docx") -Dest
 $word = $null
 $document = $null
 try {
+    Set-GenerationStage "Wordを起動中"
     $word = New-Object -ComObject Word.Application
+    Register-NewAutomationWordProcess
     $word.Visible = $false; $word.DisplayAlerts = 0
 
     # Participant roster: preserve supplied source template's layout and runs.
+    Set-GenerationStage "参加者名簿を作成中"
     $document = Open-Document $word $participantPath
+    Register-DocumentWordProcess $document
     Replace-FoundTextPreserving $document "（山名）" ([string]$payload.project.mountainName) -Color $wdColorBlack | Out-Null
     Set-ParagraphByPrefixPreserving $document "企画者：" "企画者：$($payload.project.organizer.studentId) $($payload.project.organizer.name)" -Color $wdColorBlack | Out-Null
     Set-ParagraphByPrefixPreserving $document "年　月" "$($eventDate.Year)年 $($eventDate.Month)月 $($eventDate.Day)日実施" -Color $wdColorBlack | Out-Null
@@ -429,7 +544,9 @@ try {
     Normalize-OoxmlPackage $participantPath
 
     # App-specific hiking-plan template: only replace documented slots.
+    Set-GenerationStage "登山計画書を作成中"
     $document = Open-Document $word $planPath
+    Register-DocumentWordProcess $document
     $document.Content.Font.ColorIndex = 1
     Set-MarkerText $document "[[MOUNTAIN]]" ([string]$payload.project.mountainName) $wdColorBlack | Out-Null
     Set-MarkerText $document "[[ORGANIZER]]" "$($payload.project.organizer.studentId) $($payload.project.organizer.name)" $wdColorBlack | Out-Null
@@ -470,12 +587,16 @@ try {
     Format-PlanLabels $document
     $document.Save(); $document.Close($false); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($document); $document = $null
     Normalize-OoxmlPackage $planPath ([string]$payload.project.meetingTime) ([string]$payload.plan.itineraryText) $payload.plan.itinerary
+    Set-GenerationStage "登山計画書をPDF変換中"
     $document = Open-Document $word $planPath
+    Register-DocumentWordProcess $document
     $document.ExportAsFixedFormat($planPdfPath, $wdExportFormatPdf)
     $document.Close($false); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($document); $document = $null
 
     # Hiking notice: direct, format-preserving edits to supplied source template.
+    Set-GenerationStage "登山等届を作成中"
     $document = Open-Document $word $noticePath
+    Register-DocumentWordProcess $document
     Set-ParagraphByPrefixPreserving $document "令和" (Get-ReiwaDate $submissionDate) -OutsideTable | Out-Null
     Set-ExistingBlankField $document "学籍番号" ([string]$payload.project.organizer.studentId) -OutsideTable | Out-Null
     Set-ParagraphByPrefixPreserving $document "学部" "　　 $($payload.project.organizer.faculty)　　　　　　$($payload.project.organizer.department)" -OutsideTable | Out-Null
@@ -505,10 +626,14 @@ try {
     Normalize-OoxmlPackage $noticePath
 }
 finally {
+    $stageBeforeCleanup = $script:currentGenerationStage
+    Set-GenerationStage "Wordを終了中"
     if ($null -ne $document) { try { $document.Close($false) } catch {}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($document) }
     if ($null -ne $word) { try { $word.Quit() } catch {}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($word) }
     [GC]::Collect(); [GC]::WaitForPendingFinalizers()
+    Set-GenerationStage $stageBeforeCleanup
 }
 
+Set-GenerationStage "生成完了"
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 [pscustomobject]@{ outputDir = $outputDirectory; files = @($participantPath, $planPath, $planPdfPath, $noticePath) } | ConvertTo-Json -Compress

@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import type { GenerationResult, ImportedTable, OfficeStatus, ProjectSnapshot, ProjectSummary } from "../types";
 
 export interface SampleDataDefaults {
@@ -11,8 +11,17 @@ export const loadTabularFile = (path: string) => invoke<ImportedTable>("load_tab
 
 export const checkOffice = () => invoke<OfficeStatus>("check_office");
 
-export const generateDocuments = (payload: unknown, outputRoot: string) =>
-  invoke<GenerationResult>("generate_documents", { payload, outputRoot });
+interface GenerationEvent {
+  event: "progress";
+  data: { stage: string };
+}
+
+export const generateDocuments = (payload: unknown, outputRoot: string, onProgress: (stage: string) => void) => {
+  const onEvent = new Channel<GenerationEvent>((message) => {
+    if (message.event === "progress") onProgress(message.data.stage);
+  });
+  return invoke<GenerationResult>("generate_documents", { payload, outputRoot, onEvent });
+};
 
 export const openOutputFolder = (path: string) => invoke("open_output_folder", { path });
 

@@ -31,6 +31,7 @@ interface ReviewStepProps {
   privacyMode: PrivacyMode;
   outputRoot: string;
   generating: boolean;
+  generationStage: string;
   result: GenerationResult | null;
   generationError: string;
   outputOpenError: string;
@@ -48,6 +49,7 @@ export function ReviewStep({
   privacyMode,
   outputRoot,
   generating,
+  generationStage,
   result,
   generationError,
   outputOpenError,
@@ -155,7 +157,7 @@ export function ReviewStep({
         </div>
       </div>
 
-      {generating ? <InlineLoading description="WordとPDFを生成しています。Officeを閉じずにお待ちください。" /> : null}
+      {generating ? <InlineLoading description={`${generationStage || "WordとPDFを生成中"}。Officeを閉じずにお待ちください。`} /> : null}
       {generationError ? <InlineNotification kind="error" title="書類を生成できませんでした" subtitle={generationError} hideCloseButton lowContrast /> : null}
       {outputOpenError ? <InlineNotification kind="error" title="完成フォルダを開けませんでした" subtitle={outputOpenError} hideCloseButton lowContrast /> : null}
       {result ? (
