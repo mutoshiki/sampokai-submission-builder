@@ -592,7 +592,9 @@ try {
     Set-GenerationStage "登山計画書をPDF変換中"
     $document = Open-Document $word $planPath
     Register-DocumentWordProcess $document
-    $document.ExportAsFixedFormat($planPdfPath, $wdExportFormatPdf)
+    # SaveAs2 works with both Microsoft Word and WPS. Do not fall back to the
+    # legacy fixed-format export: it can hang indefinitely in Microsoft Word COM.
+    $document.SaveAs2($planPdfPath, $wdExportFormatPdf)
     $document.Close($false); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($document); $document = $null
 
     # Hiking notice: direct, format-preserving edits to supplied source template.
