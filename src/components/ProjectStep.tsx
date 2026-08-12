@@ -33,6 +33,7 @@ export function ProjectStep({ project, roster, onChange, focusTarget, onFocusHan
 
       <FormGroup legendText="基本情報">
         <div className="form-grid form-grid--three">
+          <TextInput id="project-name" labelText="企画名" value={project.projectName ?? ""} placeholder="未入力時は無題の企画" onChange={(event) => setField("projectName", event.target.value)} />
           <TextInput id="mountain-name" labelText="山名" value={project.mountainName} placeholder="例：蝶ヶ岳" onChange={(event) => setField("mountainName", event.target.value)} />
           <TextInput id="event-date" type="date" labelText="実施日" value={project.date} onChange={(event) => setField("date", event.target.value)} />
           <TextInput id="reserve-date" type="date" labelText="予備日（任意）" value={project.reserveDate} onChange={(event) => setField("reserveDate", event.target.value)} />

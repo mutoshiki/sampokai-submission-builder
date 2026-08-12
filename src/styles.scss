@@ -21,7 +21,6 @@ body {
 .app-root {
   min-height: 100%;
   padding-top: 3rem;
-  padding-bottom: 4rem;
 }
 
 .project-list-page {
@@ -87,14 +86,14 @@ body {
 .workspace-shell {
   display: grid;
   grid-template-columns: 15rem minmax(0, 1fr);
-  min-height: calc(100vh - 7rem);
+  min-height: calc(100vh - 3rem);
 }
 
 .step-rail {
   position: sticky;
   top: 3rem;
   align-self: start;
-  min-height: calc(100vh - 7rem);
+  min-height: calc(100vh - 3rem);
   padding: spacing.$spacing-07 spacing.$spacing-05;
   background: colors.$white-0;
   border-right: 1px solid colors.$gray-20;
@@ -106,47 +105,32 @@ body {
 }
 
 .main-content {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   max-width: 90rem;
+  min-height: calc(100vh - 3rem);
   padding: spacing.$spacing-07;
   margin: 0 auto;
   background: colors.$white-0;
 }
 
-.action-footer {
-  position: fixed;
-  z-index: 7000;
-  right: 0;
-  bottom: 0;
-  left: 15rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 4rem;
-  padding: spacing.$spacing-03 spacing.$spacing-05;
-  background: colors.$gray-10;
-  border-top: 1px solid colors.$gray-30;
+.step-content {
+  width: 100%;
 }
 
-.scroll-cue {
-  position: absolute;
-  top: calc(-1 * #{spacing.$spacing-06});
-  left: 50%;
-  display: grid;
-  width: spacing.$spacing-06;
-  height: spacing.$spacing-06;
-  place-items: center;
-  color: colors.$gray-70;
-  pointer-events: none;
-  background: colors.$gray-10;
-  border: 1px solid colors.$gray-30;
-  border-bottom: 0;
-  transform: translateX(-50%);
+.step-navigation {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+  padding-top: spacing.$spacing-09;
+  padding-bottom: spacing.$spacing-07;
 }
 
-.action-footer__steps {
+.step-navigation__buttons {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: spacing.$spacing-03;
 }
 
@@ -431,7 +415,6 @@ body {
 
 @media (max-width: 1100px) {
   .workspace-shell { grid-template-columns: 12rem minmax(0, 1fr); }
-  .action-footer { left: 12rem; }
   .main-content { padding: spacing.$spacing-06; }
   .form-grid--three,
   .form-grid--five,
@@ -445,4 +428,18 @@ body {
   .project-list-page { padding: spacing.$spacing-05; }
   .page-heading--projects { align-items: flex-start; }
   .app-header__save-status { display: none; }
+  .workspace-shell { grid-template-columns: minmax(0, 1fr); }
+  .step-rail {
+    position: static;
+    min-height: 0;
+    border-right: 0;
+    border-bottom: 1px solid colors.$gray-20;
+  }
+}
+
+@media (max-width: 420px) {
+  .step-navigation__buttons {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }

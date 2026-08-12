@@ -8,7 +8,6 @@ import {
 import { ArrowLeft, ArrowRight } from "@carbon/icons-react";
 import type { StepId } from "../types";
 import { AppHeader } from "./AppHeader";
-import { ScrollCue } from "./ScrollCue";
 
 const steps = ["参加者", "企画情報", "登山計画", "確認・出力"];
 
@@ -21,6 +20,9 @@ interface AppShellProps {
   nextLabel?: string;
   nextDisabled?: boolean;
   nextIcon?: typeof ArrowRight;
+  projectTitle: string;
+  dataEntryAvailable?: boolean;
+  onEnterSampleData?: () => void;
   saveStatus?: "saving" | "saved" | "error";
   updateEnabled?: boolean;
 }
@@ -34,12 +36,18 @@ export function AppShell({
   nextLabel = "次へ",
   nextDisabled = false,
   nextIcon = ArrowRight,
+  projectTitle,
+  dataEntryAvailable = false,
+  onEnterSampleData,
   saveStatus,
   updateEnabled = true,
 }: AppShellProps) {
   return (
     <div className="app-root">
       <AppHeader
+        windowTitle={projectTitle}
+        dataEntryAvailable={dataEntryAvailable}
+        onEnterSampleData={onEnterSampleData}
         saveStatus={saveStatus}
         updateEnabled={updateEnabled}
       />
@@ -58,15 +66,16 @@ export function AppShell({
             ))}
           </ProgressIndicator>
         </aside>
-        <Content className="main-content">{children}</Content>
+        <Content className="main-content">
+          <div className="step-content">{children}</div>
+          <footer className="step-navigation">
+            <div className="step-navigation__buttons">
+              <Button kind="secondary" renderIcon={ArrowLeft} onClick={onBack} disabled={step === 0}>戻る</Button>
+              <Button renderIcon={nextIcon} onClick={onNext} disabled={nextDisabled}>{nextLabel}</Button>
+            </div>
+          </footer>
+        </Content>
       </div>
-      <footer className="action-footer">
-        <ScrollCue />
-        <div className="action-footer__steps">
-          <Button kind="secondary" renderIcon={ArrowLeft} onClick={onBack} disabled={step === 0}>戻る</Button>
-          <Button renderIcon={nextIcon} onClick={onNext} disabled={nextDisabled}>{nextLabel}</Button>
-        </div>
-      </footer>
     </div>
   );
 }

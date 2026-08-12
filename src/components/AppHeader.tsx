@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { UpdateManager } from "./UpdateManager";
 
 interface AppHeaderProps {
+  windowTitle?: string;
   dataEntryAvailable?: boolean;
   onEnterSampleData?: () => void;
   saveStatus?: "saving" | "saved" | "error";
@@ -11,6 +12,7 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({
+  windowTitle,
   dataEntryAvailable = false,
   onEnterSampleData,
   saveStatus,
@@ -24,8 +26,8 @@ export function AppHeader({
       : <InlineLoading status="finished" description="保存済み" />;
 
   return (
-    <Header aria-label="山歩会 提出書類作成ツール">
-      <HeaderName prefix="山歩会">提出書類作成ツール</HeaderName>
+    <Header aria-label={windowTitle ?? "アプリケーション操作"}>
+      {windowTitle ? <HeaderName prefix="">{windowTitle}</HeaderName> : null}
       {saveStatus ? <div className="app-header__save-status" aria-live="polite">{saveIndicator}</div> : null}
       {dataEntryAvailable ? (
         <div className="app-header__debug">

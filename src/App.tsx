@@ -10,7 +10,8 @@ import { ProjectStep } from "./components/ProjectStep";
 import { PlanStep, standardEquipment } from "./components/PlanStep";
 import { ReviewStep } from "./components/ReviewStep";
 import { allowRouteImagePreview, deleteProject, generateDocuments, getSampleDataDefaults, listProjects, loadProject, loadTabularFile, openOutputFolder, saveProject } from "./lib/api";
-import { createProjectId, duplicateProjectSnapshot, PROJECT_SCHEMA_VERSION } from "./lib/projects";
+import { createProjectId, defaultProjectName, duplicateProjectSnapshot, PROJECT_SCHEMA_VERSION } from "./lib/projects";
+import { useDebugShortcut } from "./lib/debugShortcut";
 import { buildItineraryText, durationBetween } from "./lib/itinerary";
 import {
   applyRosterOverrides,
@@ -84,7 +85,7 @@ const initialPlan: PlanInfo = {
   homeBasePhone: "",
 };
 
-const emptyProjectSnapshot = (now = new Date().toISOString(), id = createProjectId()): ProjectSnapshot => ({
+const emptyProjectSnapshot = (now = new Date().toISOString(), id: string = createProjectId()): ProjectSnapshot => ({
   schemaVersion: PROJECT_SCHEMA_VERSION, id, createdAt: now, updatedAt: now, step: 0,
   rosterPath: "", responsePath: "", rosterMapping: emptyMapping(), responseMapping: emptyMapping(),
   manualMatches: {}, participantOverrides: {}, selectedIds: [], project: structuredClone(initialProject),
@@ -94,7 +95,9 @@ const emptyProjectSnapshot = (now = new Date().toISOString(), id = createProject
 const isTauriRuntime = () => Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
 
 export default function App() {
-  const [screen, setScreen] = useState<"list" | "editor">("list");
+  const projectWindowId = useMemo(() => new URLSearchParams(window.location.search).get("project"), []);
+  const isProjectWindow = Boolean(projectWindowId);
+  const [screen, setScreen] = useState<"list" | "editor">(isProjectWindow ? "editor" : "list");
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsError, setProjectsError] = useState("");
@@ -176,9 +179,9 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (!isTauriRuntime()) return;
+    if (!isTauriRuntime() || isProjectWindow) return;
     void refreshProjects();
-  }, []);
+  }, [isProjectWindow]);
 
   const snapshot = (): ProjectSnapshot | null => activeProject ? {
     schemaVersion: PROJECT_SCHEMA_VERSION, id: activeProject.id, createdAt: activeProject.createdAt,
@@ -196,15 +199,8 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [screen, activeProject, step, rosterPath, responsePath, rosterMapping, responseMapping, manualMatches, participantOverrides, selectedIds, currentProject, plan, privacyMode, outputRoot]);
 
-  useEffect(() => {
-    const toggleDebugControls = (event: KeyboardEvent) => {
-      if (!isTauriRuntime() || event.repeat || !event.ctrlKey || !event.shiftKey || event.code !== "KeyD") return;
-      event.preventDefault();
-      setSampleDataControlVisible((visible) => !visible);
-    };
-    window.addEventListener("keydown", toggleDebugControls);
-    return () => window.removeEventListener("keydown", toggleDebugControls);
-  }, []);
+  const toggleDebugControls = () => setSampleDataControlVisible((visible) => !visible);
+  useDebugShortcut(toggleDebugControls, isTauriRuntime());
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -343,6 +339,78 @@ export default function App() {
     setPlan((current) => ({ ...current, routeImagePath: selected }));
   };
 
+  const buildSampleSnapshot = (
+    base: ProjectSnapshot,
+    defaults: Awaited<ReturnType<typeof getSampleDataDefaults>>,
+    sampleRosterTable: ImportedTable,
+    sampleResponseTable: ImportedTable,
+  ): ProjectSnapshot => {
+    const sampleRosterMapping = detectMapping(sampleRosterTable, "roster");
+    const sampleResponseMapping = detectMapping(sampleResponseTable, "response");
+    const sampleRoster = buildRosterRecords(sampleRosterTable, sampleRosterMapping);
+    const sampleResponses = buildResponseRecords(sampleResponseTable, sampleResponseMapping);
+    const organizer = sampleRoster[0];
+    const homeBase = sampleRoster[1] ?? organizer;
+
+    return {
+      ...base,
+      updatedAt: new Date().toISOString(),
+      step: 3,
+      rosterPath: defaults.rosterPath,
+      responsePath: defaults.responsePath,
+      rosterMapping: sampleRosterMapping,
+      responseMapping: sampleResponseMapping,
+      manualMatches: {},
+      participantOverrides: {},
+      selectedIds: sampleResponses.map(({ rowId }) => rowId),
+      project: {
+        ...structuredClone(initialProject),
+        projectName: "燕岳夏山企画",
+        mountainName: "燕岳",
+        date: "2026-10-18",
+        reserveDate: "2026-10-25",
+        submissionDate: "2026-09-20",
+        area: "燕岳（長野県安曇野市）",
+        noticePlace: "長野県安曇野市 燕岳",
+        meetingPlace: "松本駅 東口",
+        meetingTime: "06:30",
+        weatherPolicy: "雨天中止",
+        organizer: organizer ? {
+          rosterIndex: 0,
+          studentId: organizer.studentId,
+          name: organizer.name,
+          faculty: organizer.faculty,
+          department: organizer.department,
+          phone: organizer.phone,
+        } : structuredClone(initialProject.organizer),
+      },
+      plan: {
+        ...structuredClone(initialPlan),
+        entryTime: "07:00",
+        exitTime: "10:15",
+        ascent: "650",
+        descent: "650",
+        distance: "8.4",
+        itinerary: [
+          { id: "sample-start", kind: "Start", name: "中房温泉", arrivalTime: "07:00", restMinutes: "0", travelMinutesToNext: "90" },
+          { id: "sample-peak", kind: "Peak", name: "燕岳", arrivalTime: "08:30", restMinutes: "30", travelMinutesToNext: "75" },
+          { id: "sample-goal", kind: "Goal", name: "中房温泉", arrivalTime: "10:15", restMinutes: "0", travelMinutesToNext: "" },
+        ],
+        routeImagePath: defaults.routeImagePath,
+        escapePlan: "天候悪化または体調不良時は直ちに引き返し、中房温泉から下山します。",
+        equipment: [...standardEquipment],
+        drinkQuantity: "2L程度",
+        policeContacts: [{ id: "sample-police", label: "長野県警察本部", phone: "026-233-0110" }],
+        lodgeContacts: [{ id: "sample-lodge", label: "燕山荘", phone: "0263-32-1535" }],
+        homeBaseRosterIndex: homeBase ? sampleRoster.indexOf(homeBase) : null,
+        homeBaseName: homeBase?.name ?? "",
+        homeBasePhone: homeBase?.phone ?? "",
+      },
+      privacyMode: "full",
+      outputRoot: "",
+    };
+  };
+
   const enterSampleData = async () => {
     if (!isTauriRuntime()) return;
     setProjectsError("");
@@ -353,18 +421,18 @@ export default function App() {
         loadTabularFile(defaults.rosterPath),
         loadTabularFile(defaults.responsePath),
       ]);
-      const saved = emptyProjectSnapshot();
-      const rosterMapping = detectMapping(rosterTable, "roster");
-      const responseMapping = detectMapping(responseTable, "response");
       await allowRouteImagePreview(defaults.routeImagePath);
-      await saveProject({
-        ...saved,
-        rosterPath: defaults.rosterPath,
-        responsePath: defaults.responsePath,
-        rosterMapping,
-        responseMapping,
-        plan: { ...saved.plan, routeImagePath: defaults.routeImagePath },
-      });
+      const sample = buildSampleSnapshot(
+        activeProject
+          ? { ...emptyProjectSnapshot(activeProject.createdAt, activeProject.id), createdAt: activeProject.createdAt }
+          : emptyProjectSnapshot(),
+        defaults,
+        rosterTable,
+        responseTable,
+      );
+      await saveProject(sample);
+      if (activeProject) await applySnapshot(sample);
+      else await openProjectInWindow(sample.id);
       await refreshProjects();
       setSaveStatus("saved");
       setSampleDataControlVisible(false);
@@ -382,9 +450,8 @@ export default function App() {
   const clearValidationTarget = () => setValidationTarget(null);
 
   useEffect(() => {
-    const projectId = new URLSearchParams(window.location.search).get("project");
-    if (!projectId || !isTauriRuntime()) return;
-    void loadProject(projectId)
+    if (!projectWindowId || !isTauriRuntime()) return;
+    void loadProject(projectWindowId)
       .then((saved) => applySnapshot(saved))
       .then(() => setScreen("editor"))
       .catch((error) => setProjectsError(String(error)));
@@ -452,6 +519,9 @@ export default function App() {
       nextLabel={step === 3 ? "提出書類を作成" : "次へ"}
       nextDisabled={nextDisabled}
       nextIcon={step === 3 ? DocumentExport : undefined}
+      projectTitle={currentProject.projectName?.trim() || defaultProjectName(currentProject.mountainName)}
+      dataEntryAvailable={sampleDataControlVisible}
+      onEnterSampleData={() => void enterSampleData()}
       saveStatus={activeProject ? saveStatus : undefined}
       updateEnabled={isTauriRuntime()}
     >
