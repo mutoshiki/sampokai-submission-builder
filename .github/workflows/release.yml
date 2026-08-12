@@ -29,6 +29,15 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # Restore only: main's trusted warm workflow is the sole Rust cache writer.
+      # GitHub Actions permits tag runs to restore caches from the default branch.
+      - name: Restore Rust/Tauri build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-tauri-release
+          workspaces: "src-tauri -> target"
+          save-if: false
+
       - name: Prepare signed updater configuration
         shell: pwsh
         env:

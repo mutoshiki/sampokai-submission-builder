@@ -1,9 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { GenerationResult, ImportedTable, OfficeStatus, ProjectSnapshot, ProjectSummary } from "../types";
 
-export interface DebugDefaults {
+export interface SampleDataDefaults {
+  rosterPath: string;
+  responsePath: string;
   routeImagePath: string;
-  outputRoot: string;
 }
 
 export const loadTabularFile = (path: string) => invoke<ImportedTable>("load_tabular_file", { path });
@@ -17,7 +18,7 @@ export const openOutputFolder = (path: string) => invoke("open_output_folder", {
 
 export const allowRouteImagePreview = (path: string) => invoke("allow_route_image_preview", { path });
 
-export const getDebugDefaults = () => invoke<DebugDefaults>("debug_defaults");
+export const getSampleDataDefaults = () => invoke<SampleDataDefaults>("sample_data_defaults");
 
 export const listProjects = () => invoke<ProjectSummary[]>("list_projects");
 

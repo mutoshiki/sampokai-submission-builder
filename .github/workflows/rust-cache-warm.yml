@@ -1,0 +1,38 @@
+name: Warm Windows Rust/Tauri cache
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src-tauri/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/rust-cache-warm.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warm-rust-cache:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Toolchain selection must precede rust-cache: rustc version is cache-key input.
+      - uses: dtolnay/rust-toolchain@stable
+
+      # This is the sole writer. It saves Cargo registry, Cargo git dependencies,
+      # and src-tauri/target dependency artifacts into main's cache scope.
+      - name: Restore and save Rust/Tauri build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-tauri-release
+          workspaces: "src-tauri -> target"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # Match Tauri's release Rust profile without bundling, signing, or publishing.
+      - name: Compile Rust release dependencies
+        run: cargo build --manifest-path src-tauri/Cargo.toml --locked --release

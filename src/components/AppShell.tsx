@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import {
   Button,
   Content,
-  InlineLoading,
   ProgressIndicator,
   ProgressStep,
 } from "@carbon/react";
@@ -22,11 +21,6 @@ interface AppShellProps {
   nextLabel?: string;
   nextDisabled?: boolean;
   nextIcon?: typeof ArrowRight;
-  debugAvailable?: boolean;
-  debugMode?: boolean;
-  onFillDebug?: () => void;
-  onClearDebug?: () => void;
-  onReturnToProjects: () => void;
   saveStatus?: "saving" | "saved" | "error";
   updateEnabled?: boolean;
 }
@@ -40,27 +34,13 @@ export function AppShell({
   nextLabel = "次へ",
   nextDisabled = false,
   nextIcon = ArrowRight,
-  debugAvailable = false,
-  debugMode = false,
-  onFillDebug,
-  onClearDebug,
-  onReturnToProjects,
   saveStatus,
   updateEnabled = true,
 }: AppShellProps) {
-  const saveIndicator = saveStatus === "saving"
-    ? <InlineLoading status="active" description="保存中" />
-    : saveStatus === "error"
-      ? <InlineLoading status="error" description="保存に失敗しました" />
-      : <InlineLoading status="finished" description="保存済み" />;
-
   return (
     <div className="app-root">
       <AppHeader
-        debugAvailable={debugAvailable}
-        debugMode={debugMode}
-        onFillDebug={onFillDebug}
-        onClearDebug={onClearDebug}
+        saveStatus={saveStatus}
         updateEnabled={updateEnabled}
       />
       <div className="workspace-shell">
@@ -82,10 +62,6 @@ export function AppShell({
       </div>
       <footer className="action-footer">
         <ScrollCue />
-        <div className="action-footer__context">
-          <Button kind="ghost" renderIcon={ArrowLeft} onClick={onReturnToProjects}>企画一覧へ戻る</Button>
-          {saveStatus ? <div className="action-footer__save-status" aria-live="polite">{saveIndicator}</div> : null}
-        </div>
         <div className="action-footer__steps">
           <Button kind="secondary" renderIcon={ArrowLeft} onClick={onBack} disabled={step === 0}>戻る</Button>
           <Button renderIcon={nextIcon} onClick={onNext} disabled={nextDisabled}>{nextLabel}</Button>

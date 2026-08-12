@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { getCurrentWebviewWindow, WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { DocumentExport } from "@carbon/icons-react";
 import { AppHeader } from "./components/AppHeader";
 import { AppShell } from "./components/AppShell";
@@ -9,7 +9,7 @@ import { ParticipantsStep } from "./components/ParticipantsStep";
 import { ProjectStep } from "./components/ProjectStep";
 import { PlanStep, standardEquipment } from "./components/PlanStep";
 import { ReviewStep } from "./components/ReviewStep";
-import { allowRouteImagePreview, deleteProject, generateDocuments, getDebugDefaults, listProjects, loadProject, loadTabularFile, openOutputFolder, saveProject } from "./lib/api";
+import { allowRouteImagePreview, deleteProject, generateDocuments, getSampleDataDefaults, listProjects, loadProject, loadTabularFile, openOutputFolder, saveProject } from "./lib/api";
 import { createProjectId, duplicateProjectSnapshot, PROJECT_SCHEMA_VERSION } from "./lib/projects";
 import { buildItineraryText, durationBetween } from "./lib/itinerary";
 import {
@@ -93,33 +93,6 @@ const emptyProjectSnapshot = (now = new Date().toISOString(), id = createProject
 
 const isTauriRuntime = () => Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
 
-const debugRosterTable: ImportedTable = {
-  sheetName: "開発用架空名簿",
-  columns: ["学籍番号", "氏名", "氏名（カナ）", "学部", "学科", "身体の性別", "現住所", "本人連絡先", "緊急連絡先"],
-  rows: [
-    ["DEBUG-001", "架空 岳人", "カクウ ガクト", "工学部", "架空工学科", "男性", "架空県架空市1-1", "000-0000-0001", "000-0000-1001"],
-    ["DEBUG-002", "架空 花子", "カクウ ハナコ", "人文学部", "架空人文学科", "女性", "架空県架空市2-2", "000-0000-0002", "000-0000-1002"],
-  ],
-  headerRowIndex: 0,
-  totalRows: 2,
-};
-
-const debugResponseTable: ImportedTable = {
-  sheetName: "開発用架空フォーム回答",
-  columns: ["学籍番号", "氏名", "住所"],
-  rows: [["DEBUG-001", "架空 岳人", "架空県架空市1-1"], ["DEBUG-002", "架空 花子", "架空県架空市2-2"]],
-  headerRowIndex: 0,
-  totalRows: 2,
-};
-
-const debugRosterMapping: ColumnMapping = {
-  studentId: 0, name: 1, nameKana: 2, faculty: 3, department: 4, gender: 5, address: 6, phone: 7, emergencyPhone: 8,
-};
-
-const debugResponseMapping: ColumnMapping = {
-  studentId: 0, name: 1, nameKana: null, faculty: null, department: null, gender: null, address: 2, phone: null, emergencyPhone: null,
-};
-
 export default function App() {
   const [screen, setScreen] = useState<"list" | "editor">("list");
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -149,8 +122,7 @@ export default function App() {
   const [outputOpenError, setOutputOpenError] = useState("");
   const [result, setResult] = useState<GenerationResult | null>(null);
   const [validationTarget, setValidationTarget] = useState<ValidationTarget | null>(null);
-  const [debugMode, setDebugMode] = useState(false);
-  const [debugControlsVisible, setDebugControlsVisible] = useState(false);
+  const [sampleDataControlVisible, setSampleDataControlVisible] = useState(false);
 
   const refreshProjects = async () => {
     if (!isTauriRuntime()) return;
@@ -208,7 +180,7 @@ export default function App() {
     void refreshProjects();
   }, []);
 
-  const snapshot = (): ProjectSnapshot | null => activeProject && !debugMode ? {
+  const snapshot = (): ProjectSnapshot | null => activeProject ? {
     schemaVersion: PROJECT_SCHEMA_VERSION, id: activeProject.id, createdAt: activeProject.createdAt,
     updatedAt: new Date().toISOString(), step, rosterPath, responsePath, rosterMapping, responseMapping,
     manualMatches, participantOverrides, selectedIds: [...selectedIds], project: currentProject, plan, privacyMode, outputRoot,
@@ -222,13 +194,13 @@ export default function App() {
       void saveProject(current).then(() => setSaveStatus("saved")).catch(() => setSaveStatus("error"));
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [screen, activeProject, step, rosterPath, responsePath, rosterMapping, responseMapping, manualMatches, participantOverrides, selectedIds, currentProject, plan, privacyMode, outputRoot, debugMode]);
+  }, [screen, activeProject, step, rosterPath, responsePath, rosterMapping, responseMapping, manualMatches, participantOverrides, selectedIds, currentProject, plan, privacyMode, outputRoot]);
 
   useEffect(() => {
     const toggleDebugControls = (event: KeyboardEvent) => {
       if (!isTauriRuntime() || event.repeat || !event.ctrlKey || !event.shiftKey || event.code !== "KeyD") return;
       event.preventDefault();
-      setDebugControlsVisible((visible) => !visible);
+      setSampleDataControlVisible((visible) => !visible);
     };
     window.addEventListener("keydown", toggleDebugControls);
     return () => window.removeEventListener("keydown", toggleDebugControls);
@@ -256,7 +228,7 @@ export default function App() {
     setManualMatches(saved.manualMatches); setParticipantOverrides(saved.participantOverrides);
     setSelectedIds(new Set(saved.selectedIds)); setProject(saved.project); setPlan(saved.plan);
     setPrivacyMode(saved.privacyMode); setOutputRoot(saved.outputRoot); setResult(null); setGenerationError("");
-    setImportError(""); setDebugMode(false); setValidationTarget(null);
+    setImportError(""); setValidationTarget(null);
     const missing: string[] = [];
     if (saved.rosterPath) {
       try { setRosterTable(await loadTabularFile(saved.rosterPath)); } catch { setRosterTable(null); missing.push("元名簿"); }
@@ -270,24 +242,39 @@ export default function App() {
     if (missing.length) setImportError(`${missing.join("、")}が見つかりません。該当する入力欄から元ファイルを再選択してください。`);
   };
 
+  const openProjectInWindow = async (id: string) => {
+    const label = `project-${id}`;
+    const existing = await WebviewWindow.getByLabel(label);
+    if (existing) {
+      await existing.show();
+      await existing.setFocus();
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.searchParams.set("project", id);
+    new WebviewWindow(label, {
+      title: "山歩会 提出書類作成ツール",
+      url: url.href,
+      width: 1280,
+      height: 800,
+      minWidth: 1024,
+      minHeight: 680,
+      resizable: true,
+      center: true,
+    });
+  };
+
   const createProject = async () => {
     const saved = emptyProjectSnapshot();
     setSaveStatus("saving");
-    try { await saveProject(saved); await applySnapshot(saved); setScreen("editor"); setSaveStatus("saved"); }
+    try { await saveProject(saved); await refreshProjects(); await openProjectInWindow(saved.id); setSaveStatus("saved"); }
     catch (error) { setProjectsError(String(error)); }
   };
 
   const openProject = async (id: string) => {
-    try { const saved = await loadProject(id); await applySnapshot(saved); setScreen("editor"); }
+    try { await openProjectInWindow(id); }
     catch (error) { setProjectsError(String(error)); }
-  };
-
-  const returnToProjectList = async () => {
-    const current = snapshot();
-    if (current) {
-      try { setSaveStatus("saving"); await saveProject(current); setSaveStatus("saved"); } catch { setSaveStatus("error"); }
-    }
-    setScreen("list"); setActiveProject(null); await refreshProjects();
   };
 
   const duplicateProject = async (id: string) => {
@@ -356,86 +343,35 @@ export default function App() {
     setPlan((current) => ({ ...current, routeImagePath: selected }));
   };
 
-  const fillDebugData = async () => {
+  const enterSampleData = async () => {
     if (!isTauriRuntime()) return;
-    const defaults = await getDebugDefaults();
-    setRosterPath("開発用架空名簿（メモリ）");
-    setResponsePath("開発用架空フォーム回答（メモリ）");
-    setRosterTable(debugRosterTable);
-    setResponseTable(debugResponseTable);
-    setRosterMapping(debugRosterMapping);
-    setResponseMapping(debugResponseMapping);
-    setManualMatches({});
-    setParticipantOverrides({});
-    setSelectedIds(new Set(["response-0", "response-1"]));
-    setProject({
-      mountainName: "架空岳",
-      date: "2026-10-18",
-      reserveDate: "2026-10-25",
-      submissionDate: "2026-09-20",
-      area: "架空岳（架空県架空市）",
-      noticePlace: "架空県架空市 架空岳",
-      meetingPlace: "架空駅 東口",
-      meetingTime: "06:30",
-      weatherPolicy: "雨天中止",
-      organizer: { rosterIndex: 0, studentId: "DEBUG-001", name: "架空 岳人", faculty: "工学部", department: "架空工学科", phone: "000-0000-0001" },
-    });
-    setPlan({
-      entryTime: "07:00",
-      exitTime: "10:15",
-      ascent: "650",
-      descent: "650",
-      distance: "8.4",
-      itinerary: [
-        { id: "debug-start", kind: "Start", name: "架空登山口", arrivalTime: "07:00", restMinutes: "0", travelMinutesToNext: "90" },
-        { id: "debug-peak", kind: "Peak", name: "架空岳山頂", arrivalTime: "08:30", restMinutes: "30", travelMinutesToNext: "75" },
-        { id: "debug-goal", kind: "Goal", name: "架空登山口", arrivalTime: "10:15", restMinutes: "0", travelMinutesToNext: "" },
-      ],
-      routeImagePath: defaults.routeImagePath,
-      escapePlan: "天候悪化または体調不良時は直ちに引き返し、架空登山口から下山します。",
-      equipment: [...standardEquipment],
-      drinkQuantity: "2L程度",
-      policeContacts: [{ id: "debug-police", label: "架空県山岳警察署", phone: "000-0000-1100" }],
-      lodgeContacts: [{ id: "debug-lodge", label: "架空山荘", phone: "000-0000-2200" }],
-      homeBaseRosterIndex: 1,
-      homeBaseName: "架空 花子",
-      homeBasePhone: "000-0000-0002",
-    });
-    setPrivacyMode("full");
-    setOutputRoot(defaults.outputRoot);
-    setImportError("");
-    setGenerationError("");
-    setOutputOpenError("");
-    setResult(null);
-    setDebugMode(true);
-    setActiveProject(null);
-    setValidationTarget(null);
-    setStep(3);
-    setScreen("editor");
-  };
-
-  const clearDebugData = () => {
-    setStep(0);
-    setRosterPath("");
-    setResponsePath("");
-    setRosterTable(null);
-    setResponseTable(null);
-    setRosterMapping(emptyMapping());
-    setResponseMapping(emptyMapping());
-    setManualMatches({});
-    setParticipantOverrides({});
-    setSelectedIds(new Set());
-    setProject(initialProject);
-    setPlan(initialPlan);
-    setPrivacyMode("full");
-    setOutputRoot("");
-    setImportError("");
-    setGenerationError("");
-    setResult(null);
-    setValidationTarget(null);
-    setDebugMode(false);
-    setActiveProject(null);
-    setScreen("list");
+    setProjectsError("");
+    setSaveStatus("saving");
+    try {
+      const defaults = await getSampleDataDefaults();
+      const [rosterTable, responseTable] = await Promise.all([
+        loadTabularFile(defaults.rosterPath),
+        loadTabularFile(defaults.responsePath),
+      ]);
+      const saved = emptyProjectSnapshot();
+      const rosterMapping = detectMapping(rosterTable, "roster");
+      const responseMapping = detectMapping(responseTable, "response");
+      await allowRouteImagePreview(defaults.routeImagePath);
+      await saveProject({
+        ...saved,
+        rosterPath: defaults.rosterPath,
+        responsePath: defaults.responsePath,
+        rosterMapping,
+        responseMapping,
+        plan: { ...saved.plan, routeImagePath: defaults.routeImagePath },
+      });
+      await refreshProjects();
+      setSaveStatus("saved");
+      setSampleDataControlVisible(false);
+    } catch (error) {
+      setSaveStatus("error");
+      setProjectsError(String(error));
+    }
   };
 
   const goToValidationTarget = (target: ValidationTarget) => {
@@ -444,6 +380,22 @@ export default function App() {
   };
 
   const clearValidationTarget = () => setValidationTarget(null);
+
+  useEffect(() => {
+    const projectId = new URLSearchParams(window.location.search).get("project");
+    if (!projectId || !isTauriRuntime()) return;
+    void loadProject(projectId)
+      .then((saved) => applySnapshot(saved))
+      .then(() => setScreen("editor"))
+      .catch((error) => setProjectsError(String(error)));
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime() || screen !== "list") return;
+    const refreshOnFocus = () => void refreshProjects();
+    window.addEventListener("focus", refreshOnFocus);
+    return () => window.removeEventListener("focus", refreshOnFocus);
+  }, [screen]);
 
   const chooseOutput = async () => {
     if (!isTauriRuntime()) return;
@@ -486,7 +438,7 @@ export default function App() {
   if (screen === "list") {
     return (
       <div className="app-root">
-        <AppHeader debugAvailable={debugControlsVisible} onFillDebug={() => void fillDebugData()} updateEnabled={isTauriRuntime()} />
+        <AppHeader dataEntryAvailable={sampleDataControlVisible} onEnterSampleData={() => void enterSampleData()} updateEnabled={isTauriRuntime()} />
         <ProjectList projects={projects} loading={projectsLoading} error={projectsError} onCreate={() => void createProject()} onOpen={(id) => void openProject(id)} onDuplicate={(id) => void duplicateProject(id)} onRename={(id, name) => void renameProject(id, name)} onDelete={(id) => void removeProject(id)} />
       </div>
     );
@@ -500,11 +452,6 @@ export default function App() {
       nextLabel={step === 3 ? "提出書類を作成" : "次へ"}
       nextDisabled={nextDisabled}
       nextIcon={step === 3 ? DocumentExport : undefined}
-      debugAvailable={debugControlsVisible}
-      debugMode={debugMode}
-      onFillDebug={() => void fillDebugData()}
-      onClearDebug={clearDebugData}
-      onReturnToProjects={() => void returnToProjectList()}
       saveStatus={activeProject ? saveStatus : undefined}
       updateEnabled={isTauriRuntime()}
     >

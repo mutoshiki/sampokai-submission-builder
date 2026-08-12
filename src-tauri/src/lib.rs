@@ -75,9 +75,10 @@ struct GenerationResult {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct DebugDefaults {
+struct SampleDataDefaults {
+    roster_path: String,
+    response_path: String,
     route_image_path: String,
-    output_root: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -368,15 +369,17 @@ fn allow_route_image_preview(app: AppHandle, path: String) -> Result<(), AppErro
 }
 
 #[tauri::command]
-fn debug_defaults(app: AppHandle) -> Result<DebugDefaults, AppError> {
-    let route_image = resolve_resource(&app, &["icons/64x64.png"])?;
+fn sample_data_defaults(app: AppHandle) -> Result<SampleDataDefaults, AppError> {
+    let roster = resolve_resource(&app, &["resources/sample-data/通常名簿(ダミーデータ).xlsx"])?;
+    let response = resolve_resource(&app, &["resources/sample-data/燕岳登山企画_応募フォーム回答_ダミー.xlsx"])?;
+    let route_image = resolve_resource(&app, &["resources/sample-data/燕岳ルート図.png"])?;
     app.asset_protocol_scope()
         .allow_file(&route_image)
         .map_err(|_| AppError::ResourceMissing)?;
-    let output_root = app.path().document_dir().map_err(|_| AppError::InvalidOutput)?;
-    Ok(DebugDefaults {
+    Ok(SampleDataDefaults {
+        roster_path: roster.to_string_lossy().into_owned(),
+        response_path: response.to_string_lossy().into_owned(),
         route_image_path: route_image.to_string_lossy().into_owned(),
-        output_root: output_root.to_string_lossy().into_owned(),
     })
 }
 
@@ -481,7 +484,7 @@ pub fn run() {
             generate_documents,
             open_output_folder,
             allow_route_image_preview,
-            debug_defaults,
+            sample_data_defaults,
             list_projects,
             load_project,
             save_project,
@@ -518,11 +521,10 @@ mod tests {
     #[test]
     fn imports_provided_form_export() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../三年生以上が企画に来た時の名簿(ダミーデータ).xlsx");
+            .join("../燕岳登山企画_応募フォーム回答_ダミー.xlsx");
         let table = load_tabular_file(path.to_string_lossy().into_owned()).expect("form workbook");
         assert!(table.total_rows > 0);
-        assert!(table.columns.iter().any(|column| column.contains("学籍番号")));
-        assert!(table.columns.iter().any(|column| column.contains("氏名")));
+        assert!(table.columns.iter().any(|column| column.contains("名前")));
     }
 
     #[test]

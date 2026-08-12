@@ -1,32 +1,35 @@
-import { Header, HeaderGlobalBar, HeaderName, Tag, Button } from "@carbon/react";
+import { Button, Header, HeaderGlobalBar, HeaderName, InlineLoading } from "@carbon/react";
 import type { ReactNode } from "react";
 import { UpdateManager } from "./UpdateManager";
 
 interface AppHeaderProps {
-  debugAvailable?: boolean;
-  debugMode?: boolean;
-  onFillDebug?: () => void;
-  onClearDebug?: () => void;
+  dataEntryAvailable?: boolean;
+  onEnterSampleData?: () => void;
+  saveStatus?: "saving" | "saved" | "error";
   updateEnabled?: boolean;
   children?: ReactNode;
 }
 
 export function AppHeader({
-  debugAvailable = false,
-  debugMode = false,
-  onFillDebug,
-  onClearDebug,
+  dataEntryAvailable = false,
+  onEnterSampleData,
+  saveStatus,
   updateEnabled = true,
   children,
 }: AppHeaderProps) {
+  const saveIndicator = saveStatus === "saving"
+    ? <InlineLoading status="active" description="保存中" />
+    : saveStatus === "error"
+      ? <InlineLoading status="error" description="保存に失敗しました" />
+      : <InlineLoading status="finished" description="保存済み" />;
+
   return (
     <Header aria-label="山歩会 提出書類作成ツール">
       <HeaderName prefix="山歩会">提出書類作成ツール</HeaderName>
-      {debugAvailable ? (
+      {saveStatus ? <div className="app-header__save-status" aria-live="polite">{saveIndicator}</div> : null}
+      {dataEntryAvailable ? (
         <div className="app-header__debug">
-          {debugMode ? <Tag type="purple">デバッグ中</Tag> : null}
-          <Button kind="ghost" size="sm" onClick={onFillDebug}>架空データを入力</Button>
-          {debugMode ? <Button kind="ghost" size="sm" onClick={onClearDebug}>デバッグを終了</Button> : null}
+          <Button kind="ghost" size="sm" onClick={onEnterSampleData}>データを入力</Button>
         </div>
       ) : null}
       {children}
