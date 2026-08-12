@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { Renew } from "@carbon/icons-react";
-import { Button, InlineLoading, Modal, ProgressBar, ToastNotification } from "@carbon/react";
+import { HeaderGlobalAction, InlineLoading, Modal, ProgressBar, ToastNotification } from "@carbon/react";
 
 type CheckMode = "automatic" | "manual";
 type UpdatePhase = "idle" | "downloading" | "installing";
@@ -102,15 +102,13 @@ export function UpdateManager({ enabled }: UpdateManagerProps) {
 
   return (
     <>
-      <Button
-        kind="ghost"
-        size="sm"
-        renderIcon={Renew}
-        disabled={!enabled || checking || busy}
+      <HeaderGlobalAction
+        aria-label={checking ? "更新を確認中" : "更新を確認"}
+        tooltipAlignment="end"
         onClick={() => void checkForUpdates("manual")}
       >
-        {checking ? "更新を確認中" : "更新を確認"}
-      </Button>
+        <Renew />
+      </HeaderGlobalAction>
 
       {notification ? (
         <ToastNotification

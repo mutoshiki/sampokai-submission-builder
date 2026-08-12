@@ -2,14 +2,13 @@ import type { ReactNode } from "react";
 import {
   Button,
   Content,
-  Header,
-  HeaderName,
+  InlineLoading,
   ProgressIndicator,
   ProgressStep,
-  Tag,
 } from "@carbon/react";
 import { ArrowLeft, ArrowRight } from "@carbon/icons-react";
 import type { StepId } from "../types";
+import { AppHeader } from "./AppHeader";
 
 const steps = ["参加者", "企画情報", "登山計画", "確認・出力"];
 
@@ -26,8 +25,9 @@ interface AppShellProps {
   debugMode?: boolean;
   onFillDebug?: () => void;
   onClearDebug?: () => void;
-  headerActions?: ReactNode;
-  appVersion?: string;
+  onReturnToProjects: () => void;
+  saveStatus?: "saving" | "saved" | "error";
+  updateEnabled?: boolean;
 }
 
 export function AppShell({
@@ -43,23 +43,25 @@ export function AppShell({
   debugMode = false,
   onFillDebug,
   onClearDebug,
-  headerActions,
-  appVersion,
+  onReturnToProjects,
+  saveStatus,
+  updateEnabled = true,
 }: AppShellProps) {
+  const saveIndicator = saveStatus === "saving"
+    ? <InlineLoading status="active" description="保存中" />
+    : saveStatus === "error"
+      ? <InlineLoading status="error" description="保存に失敗しました" />
+      : <InlineLoading status="finished" description="保存済み" />;
+
   return (
     <div className="app-root">
-      <Header aria-label="山歩会 提出書類作成">
-        <HeaderName prefix="山歩会">提出書類作成</HeaderName>
-        {debugAvailable ? (
-          <div className="debug-controls">
-            {debugMode ? <Tag type="purple">開発用デバッグ中</Tag> : null}
-            <Button kind="ghost" size="sm" onClick={onFillDebug}>架空データを入力</Button>
-            {debugMode ? <Button kind="ghost" size="sm" onClick={onClearDebug}>デバッグデータをクリア</Button> : null}
-          </div>
-        ) : null}
-        <div className="local-only-label">完全ローカル</div>
-        {headerActions ? <div className="update-controls">{headerActions}</div> : null}
-      </Header>
+      <AppHeader
+        debugAvailable={debugAvailable}
+        debugMode={debugMode}
+        onFillDebug={onFillDebug}
+        onClearDebug={onClearDebug}
+        updateEnabled={updateEnabled}
+      />
       <div className="workspace-shell">
         <aside className="step-rail" aria-label="作成ステップ">
           <h2 className="step-rail__heading">作成ステップ</h2>
@@ -78,13 +80,14 @@ export function AppShell({
         <Content className="main-content">{children}</Content>
       </div>
       <footer className="action-footer">
-        {appVersion ? <span className="app-version">バージョン {appVersion}</span> : null}
-        <Button kind="secondary" renderIcon={ArrowLeft} onClick={onBack} disabled={step === 0}>
-          戻る
-        </Button>
-        <Button renderIcon={nextIcon} onClick={onNext} disabled={nextDisabled}>
-          {nextLabel}
-        </Button>
+        <div className="action-footer__context">
+          <Button kind="ghost" renderIcon={ArrowLeft} onClick={onReturnToProjects}>企画一覧へ戻る</Button>
+          {saveStatus ? <div className="action-footer__save-status" aria-live="polite">{saveIndicator}</div> : null}
+        </div>
+        <div className="action-footer__steps">
+          <Button kind="secondary" renderIcon={ArrowLeft} onClick={onBack} disabled={step === 0}>戻る</Button>
+          <Button renderIcon={nextIcon} onClick={onNext} disabled={nextDisabled}>{nextLabel}</Button>
+        </div>
       </footer>
     </div>
   );

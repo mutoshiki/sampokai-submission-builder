@@ -85,6 +85,8 @@ export interface OrganizerInfo {
 }
 
 export interface ProjectInfo {
+  /** Optional user override for the list title. Absent in schema v1 files created before this field. */
+  projectName?: string;
   mountainName: string;
   date: string;
   reserveDate: string;
@@ -140,4 +142,35 @@ export interface OfficeStatus {
 export interface GenerationResult {
   outputDir: string;
   files: string[];
+}
+
+/** Local-only persisted editing state. Imported file contents stay in source files. */
+export interface ProjectSnapshot {
+  schemaVersion: number;
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  step: StepId;
+  rosterPath: string;
+  responsePath: string;
+  rosterMapping: ColumnMapping;
+  responseMapping: ColumnMapping;
+  manualMatches: Record<string, number | null>;
+  participantOverrides: Record<number, Partial<RosterRecord>>;
+  selectedIds: string[];
+  project: ProjectInfo;
+  plan: PlanInfo;
+  privacyMode: PrivacyMode;
+  outputRoot: string;
+}
+
+export interface ProjectSummary {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  mountainName: string;
+  projectName: string;
+  date: string;
+  organizerName: string;
+  participantCount: number;
 }

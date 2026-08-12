@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "山歩会 提出書類作成",
+  "productName": "山歩会 提出書類作成ツール",
   "version": "../package.json",
   "identifier": "jp.sampokai.submission-builder",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "山歩会 提出書類作成",
+        "title": "山歩会 提出書類作成ツール",
         "width": 1280,
         "height": 800,
         "minWidth": 1024,

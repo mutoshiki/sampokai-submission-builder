@@ -24,43 +24,53 @@ body {
   padding-bottom: 4rem;
 }
 
-.local-only-label {
-  margin-left: auto;
-  padding-right: spacing.$spacing-05;
-  color: colors.$gray-30;
-  @include type.type-style("label-01");
+.project-list-page {
+  max-width: 90rem;
+  padding: spacing.$spacing-07;
+  margin: 0 auto;
+  background: colors.$white-0;
 }
 
-.update-controls {
-  display: flex;
+.project-empty-state {
+  padding: spacing.$spacing-09 0;
+  text-align: center;
 }
 
-.update-manager__content p {
-  margin: 0 0 spacing.$spacing-03;
+.project-empty-state h2 {
+  margin: 0;
+  @include type.type-style("heading-compact-02");
 }
 
-.update-manager__content h3 {
-  margin: spacing.$spacing-06 0 spacing.$spacing-03;
+.project-table {
+  min-width: 58rem;
 }
 
-.update-manager__notes {
-  white-space: pre-wrap;
+.project-name-action {
+  max-width: 26rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.update-manager__error {
-  margin-top: spacing.$spacing-05 !important;
-  color: colors.$red-60;
+.project-table__actions {
+  width: 3rem;
 }
 
-.debug-controls {
+.app-header__debug {
   display: flex;
   align-items: center;
   gap: spacing.$spacing-03;
   margin-left: auto;
 }
 
-.debug-controls + .local-only-label {
-  margin-left: 0;
+.update-manager__content p { margin: 0 0 spacing.$spacing-03; }
+.update-manager__content h3 { margin: spacing.$spacing-06 0 spacing.$spacing-03; }
+.update-manager__notes { white-space: pre-wrap; }
+.update-manager__error { margin-top: spacing.$spacing-05 !important; color: colors.$red-60; }
+
+.page-heading--projects {
+  align-items: center;
+  margin-bottom: spacing.$spacing-06;
 }
 
 .workspace-shell {
@@ -99,18 +109,24 @@ body {
   bottom: 0;
   left: 15rem;
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   min-height: 4rem;
   padding: spacing.$spacing-03 spacing.$spacing-05;
   background: colors.$gray-10;
   border-top: 1px solid colors.$gray-30;
 }
 
-.app-version {
-  align-self: center;
-  margin-right: auto;
-  color: colors.$gray-60;
-  @include type.type-style("label-01");
+.action-footer__context,
+.action-footer__steps {
+  display: flex;
+  align-items: center;
+  gap: spacing.$spacing-03;
+}
+
+.action-footer__save-status {
+  min-width: 7rem;
+  color: colors.$gray-70;
 }
 
 .page-heading {
@@ -123,7 +139,7 @@ body {
 }
 
 .page-heading h1 {
-  margin: 0 0 spacing.$spacing-03;
+  margin: 0;
   @include type.type-style("heading-04");
 }
 
@@ -401,4 +417,11 @@ body {
   .equipment-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .itinerary-header,
   .itinerary-row { grid-template-columns: 6rem minmax(9rem, 2fr) 7rem 6rem 6rem 7rem; }
+}
+
+@media (max-width: 720px) {
+  .project-list-page { padding: spacing.$spacing-05; }
+  .page-heading--projects { align-items: flex-start; }
+  .action-footer__context { min-width: 0; }
+  .action-footer__save-status { display: none; }
 }

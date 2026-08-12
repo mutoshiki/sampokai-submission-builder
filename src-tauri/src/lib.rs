@@ -33,6 +33,10 @@ enum AppError {
     ResourceMissing,
     #[error("完成フォルダを開けませんでした。")]
     OpenOutputFailed,
+    #[error("企画データを保存または読み込めませんでした。")]
+    ProjectStorage,
+    #[error("企画データが壊れているか、このアプリでは読み込めない形式です。")]
+    ProjectDataInvalid,
 }
 
 impl Serialize for AppError {
@@ -74,6 +78,102 @@ struct GenerationResult {
 struct DebugDefaults {
     route_image_path: String,
     output_root: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectSummary {
+    id: String,
+    created_at: String,
+    updated_at: String,
+    mountain_name: String,
+    project_name: String,
+    date: String,
+    organizer_name: String,
+    participant_count: usize,
+}
+
+fn project_directory(app: &AppHandle) -> Result<PathBuf, AppError> {
+    let directory = app.path().app_data_dir().map_err(|_| AppError::ProjectStorage)?.join("projects");
+    fs::create_dir_all(&directory).map_err(|_| AppError::ProjectStorage)?;
+    Ok(directory)
+}
+
+fn valid_project_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 128 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+fn project_path(directory: &Path, id: &str) -> Result<PathBuf, AppError> {
+    if !valid_project_id(id) { return Err(AppError::ProjectDataInvalid); }
+    Ok(directory.join(format!("{id}.json")))
+}
+
+fn read_project(path: &Path) -> Result<Value, AppError> {
+    let bytes = fs::read(path).or_else(|_| fs::read(path.with_extension("bak"))).map_err(|_| AppError::ProjectStorage)?;
+    let project = serde_json::from_slice::<Value>(&bytes).map_err(|_| AppError::ProjectDataInvalid)?;
+    // Later versions add migrations at this gate; never deserialize unknown shapes into editor state.
+    let valid = project.get("schemaVersion").and_then(Value::as_u64) == Some(1) && project.get("id").and_then(Value::as_str).is_some();
+    if valid { Ok(project) } else { Err(AppError::ProjectDataInvalid) }
+}
+
+fn string_at(value: &Value, path: &[&str]) -> String {
+    let mut current = value;
+    for key in path { let Some(next) = current.get(*key) else { return String::new(); }; current = next; }
+    current.as_str().unwrap_or_default().to_string()
+}
+
+fn project_summary(value: &Value) -> Option<ProjectSummary> {
+    let id = string_at(value, &["id"]);
+    if !valid_project_id(&id) { return None; }
+    Some(ProjectSummary {
+        id, created_at: string_at(value, &["createdAt"]), updated_at: string_at(value, &["updatedAt"]),
+        mountain_name: string_at(value, &["project", "mountainName"]), project_name: string_at(value, &["project", "projectName"]), date: string_at(value, &["project", "date"]),
+        organizer_name: string_at(value, &["project", "organizer", "name"]),
+        participant_count: value.get("selectedIds").and_then(Value::as_array).map_or(0, Vec::len),
+    })
+}
+
+fn save_project_file(path: &Path, project: &Value) -> Result<(), AppError> {
+    let directory = path.parent().ok_or(AppError::ProjectStorage)?;
+    let mut temp = tempfile::NamedTempFile::new_in(directory).map_err(|_| AppError::ProjectStorage)?;
+    serde_json::to_writer_pretty(&mut temp, project).map_err(|_| AppError::ProjectStorage)?;
+    temp.as_file_mut().sync_all().map_err(|_| AppError::ProjectStorage)?;
+    let backup = path.with_extension("bak"); let had_current = path.exists();
+    if backup.exists() { fs::remove_file(&backup).map_err(|_| AppError::ProjectStorage)?; }
+    if had_current { fs::rename(path, &backup).map_err(|_| AppError::ProjectStorage)?; }
+    if temp.persist(path).is_err() { if had_current { let _ = fs::rename(&backup, path); } return Err(AppError::ProjectStorage); }
+    if backup.exists() { let _ = fs::remove_file(backup); }
+    Ok(())
+}
+
+#[tauri::command]
+fn list_projects(app: AppHandle) -> Result<Vec<ProjectSummary>, AppError> {
+    let directory = project_directory(&app)?; let mut projects = Vec::new();
+    for entry in fs::read_dir(directory).map_err(|_| AppError::ProjectStorage)? {
+        let Ok(entry) = entry else { continue; }; let path = entry.path();
+        if path.extension().and_then(|extension| extension.to_str()) != Some("json") { continue; }
+        if let Ok(project) = read_project(&path) { if let Some(summary) = project_summary(&project) { projects.push(summary); } }
+    }
+    projects.sort_by(|left, right| right.updated_at.cmp(&left.updated_at)); Ok(projects)
+}
+
+#[tauri::command]
+fn load_project(app: AppHandle, id: String) -> Result<Value, AppError> {
+    let path = project_path(&project_directory(&app)?, &id)?; let project = read_project(&path)?;
+    if project.get("id").and_then(Value::as_str) != Some(id.as_str()) { return Err(AppError::ProjectDataInvalid); } Ok(project)
+}
+
+#[tauri::command]
+fn save_project(app: AppHandle, project: Value) -> Result<(), AppError> {
+    let id = project.get("id").and_then(Value::as_str).ok_or(AppError::ProjectDataInvalid)?;
+    if project.get("schemaVersion").and_then(Value::as_u64) != Some(1) { return Err(AppError::ProjectDataInvalid); }
+    let path = project_path(&project_directory(&app)?, id)?; save_project_file(&path, &project)
+}
+
+#[tauri::command]
+fn delete_project(app: AppHandle, id: String) -> Result<(), AppError> {
+    let path = project_path(&project_directory(&app)?, &id)?; if path.exists() { fs::remove_file(&path).map_err(|_| AppError::ProjectStorage)?; }
+    let backup = path.with_extension("bak"); if backup.exists() { fs::remove_file(backup).map_err(|_| AppError::ProjectStorage)?; } Ok(())
 }
 
 fn data_to_string(value: &Data) -> String {
@@ -381,7 +481,11 @@ pub fn run() {
             generate_documents,
             open_output_folder,
             allow_route_image_preview,
-            debug_defaults
+            debug_defaults,
+            list_projects,
+            load_project,
+            save_project,
+            delete_project
         ])
         .run(tauri::generate_context!())
         .expect("failed to run application");
@@ -419,6 +523,25 @@ mod tests {
         assert!(table.total_rows > 0);
         assert!(table.columns.iter().any(|column| column.contains("学籍番号")));
         assert!(table.columns.iter().any(|column| column.contains("氏名")));
+    }
+
+    #[test]
+    fn project_file_round_trip_is_atomic_and_keeps_snapshot_fields() {
+        let directory = tempfile::tempdir().expect("project directory");
+        let path = project_path(directory.path(), "project-001").expect("safe id");
+        let project = serde_json::json!({
+            "schemaVersion": 1, "id": "project-001", "createdAt": "2026-01-01T00:00:00Z",
+            "updatedAt": "2026-01-01T00:00:01Z", "selectedIds": ["response-0"],
+            "project": { "projectName": "テスト岳企画", "mountainName": "テスト岳", "date": "2026-02-01", "organizer": { "name": "山田" } },
+            "rosterPath": "C:\\source.xlsx", "responsePath": "C:\\form.xlsx"
+        });
+        save_project_file(&path, &project).expect("save project");
+        assert_eq!(read_project(&path).expect("load project"), project);
+        let summary = project_summary(&project).expect("summary");
+        assert_eq!(summary.participant_count, 1);
+        assert_eq!(summary.project_name, "テスト岳企画");
+        assert_eq!(summary.mountain_name, "テスト岳");
+        assert!(!path.with_extension("bak").exists());
     }
 
     #[test]

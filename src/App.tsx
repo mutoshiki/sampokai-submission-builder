@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { getVersion } from "@tauri-apps/api/app";
 import { DocumentExport } from "@carbon/icons-react";
+import { AppHeader } from "./components/AppHeader";
 import { AppShell } from "./components/AppShell";
-import { UpdateManager } from "./components/UpdateManager";
+import { ProjectList } from "./components/ProjectList";
 import { ParticipantsStep } from "./components/ParticipantsStep";
 import { ProjectStep } from "./components/ProjectStep";
 import { PlanStep, standardEquipment } from "./components/PlanStep";
 import { ReviewStep } from "./components/ReviewStep";
-import { allowRouteImagePreview, generateDocuments, getDebugDefaults, loadTabularFile, openOutputFolder } from "./lib/api";
+import { allowRouteImagePreview, deleteProject, generateDocuments, getDebugDefaults, listProjects, loadProject, loadTabularFile, openOutputFolder, saveProject } from "./lib/api";
+import { createProjectId, duplicateProjectSnapshot, PROJECT_SCHEMA_VERSION } from "./lib/projects";
 import { buildItineraryText, durationBetween } from "./lib/itinerary";
 import {
   applyRosterOverrides,
@@ -28,6 +29,8 @@ import type {
   PlanInfo,
   PrivacyMode,
   ProjectInfo,
+  ProjectSnapshot,
+  ProjectSummary,
   RosterRecord,
   StepId,
   ValidationTarget,
@@ -80,6 +83,13 @@ const initialPlan: PlanInfo = {
   homeBasePhone: "",
 };
 
+const emptyProjectSnapshot = (now = new Date().toISOString(), id = createProjectId()): ProjectSnapshot => ({
+  schemaVersion: PROJECT_SCHEMA_VERSION, id, createdAt: now, updatedAt: now, step: 0,
+  rosterPath: "", responsePath: "", rosterMapping: emptyMapping(), responseMapping: emptyMapping(),
+  manualMatches: {}, participantOverrides: {}, selectedIds: [], project: structuredClone(initialProject),
+  plan: structuredClone(initialPlan), privacyMode: "full", outputRoot: "",
+});
+
 const isTauriRuntime = () => Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
 
 const debugRosterTable: ImportedTable = {
@@ -110,6 +120,12 @@ const debugResponseMapping: ColumnMapping = {
 };
 
 export default function App() {
+  const [screen, setScreen] = useState<"list" | "editor">("list");
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectsError, setProjectsError] = useState("");
+  const [activeProject, setActiveProject] = useState<{ id: string; createdAt: string } | null>(null);
+  const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | "error">("saved");
   const [step, setStep] = useState<StepId>(0);
   const [rosterPath, setRosterPath] = useState("");
   const [responsePath, setResponsePath] = useState("");
@@ -134,7 +150,13 @@ export default function App() {
   const [validationTarget, setValidationTarget] = useState<ValidationTarget | null>(null);
   const [debugMode, setDebugMode] = useState(false);
   const [debugControlsVisible, setDebugControlsVisible] = useState(false);
-  const [appVersion, setAppVersion] = useState("");
+
+  const refreshProjects = async () => {
+    if (!isTauriRuntime()) return;
+    setProjectsLoading(true); setProjectsError("");
+    try { setProjects(await listProjects()); } catch (error) { setProjectsError(String(error)); }
+    finally { setProjectsLoading(false); }
+  };
 
   const baseRoster = useMemo(() => buildRosterRecords(rosterTable, rosterMapping), [rosterTable, rosterMapping]);
   const roster = useMemo(() => applyRosterOverrides(baseRoster, participantOverrides), [baseRoster, participantOverrides]);
@@ -178,8 +200,24 @@ export default function App() {
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
-    void getVersion().then(setAppVersion).catch(() => setAppVersion(""));
+    void refreshProjects();
   }, []);
+
+  const snapshot = (): ProjectSnapshot | null => activeProject && !debugMode ? {
+    schemaVersion: PROJECT_SCHEMA_VERSION, id: activeProject.id, createdAt: activeProject.createdAt,
+    updatedAt: new Date().toISOString(), step, rosterPath, responsePath, rosterMapping, responseMapping,
+    manualMatches, participantOverrides, selectedIds: [...selectedIds], project: currentProject, plan, privacyMode, outputRoot,
+  } : null;
+
+  useEffect(() => {
+    const current = snapshot();
+    if (!current || screen !== "editor" || !isTauriRuntime()) return;
+    setSaveStatus("saving");
+    const timer = window.setTimeout(() => {
+      void saveProject(current).then(() => setSaveStatus("saved")).catch(() => setSaveStatus("error"));
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [screen, activeProject, step, rosterPath, responsePath, rosterMapping, responseMapping, manualMatches, participantOverrides, selectedIds, currentProject, plan, privacyMode, outputRoot, debugMode]);
 
   useEffect(() => {
     const toggleDebugControls = (event: KeyboardEvent) => {
@@ -205,6 +243,68 @@ export default function App() {
     }).then((callback) => { unlisten = callback; });
     return () => unlisten?.();
   }, [step]);
+
+  const applySnapshot = async (saved: ProjectSnapshot) => {
+    setActiveProject({ id: saved.id, createdAt: saved.createdAt });
+    setStep(saved.step); setRosterPath(saved.rosterPath); setResponsePath(saved.responsePath);
+    setRosterMapping(saved.rosterMapping); setResponseMapping(saved.responseMapping);
+    setManualMatches(saved.manualMatches); setParticipantOverrides(saved.participantOverrides);
+    setSelectedIds(new Set(saved.selectedIds)); setProject(saved.project); setPlan(saved.plan);
+    setPrivacyMode(saved.privacyMode); setOutputRoot(saved.outputRoot); setResult(null); setGenerationError("");
+    setImportError(""); setDebugMode(false); setValidationTarget(null);
+    const missing: string[] = [];
+    if (saved.rosterPath) {
+      try { setRosterTable(await loadTabularFile(saved.rosterPath)); } catch { setRosterTable(null); missing.push("元名簿"); }
+    } else setRosterTable(null);
+    if (saved.responsePath) {
+      try { setResponseTable(await loadTabularFile(saved.responsePath)); } catch { setResponseTable(null); missing.push("フォーム回答"); }
+    } else setResponseTable(null);
+    if (saved.plan.routeImagePath) {
+      try { await allowRouteImagePreview(saved.plan.routeImagePath); } catch { missing.push("ルート画像"); }
+    }
+    if (missing.length) setImportError(`${missing.join("、")}が見つかりません。該当する入力欄から元ファイルを再選択してください。`);
+  };
+
+  const createProject = async () => {
+    const saved = emptyProjectSnapshot();
+    setSaveStatus("saving");
+    try { await saveProject(saved); await applySnapshot(saved); setScreen("editor"); setSaveStatus("saved"); }
+    catch (error) { setProjectsError(String(error)); }
+  };
+
+  const openProject = async (id: string) => {
+    try { const saved = await loadProject(id); await applySnapshot(saved); setScreen("editor"); }
+    catch (error) { setProjectsError(String(error)); }
+  };
+
+  const returnToProjectList = async () => {
+    const current = snapshot();
+    if (current) {
+      try { setSaveStatus("saving"); await saveProject(current); setSaveStatus("saved"); } catch { setSaveStatus("error"); }
+    }
+    setScreen("list"); setActiveProject(null); await refreshProjects();
+  };
+
+  const duplicateProject = async (id: string) => {
+    try { const copy = duplicateProjectSnapshot(await loadProject(id), new Date().toISOString()); await saveProject(copy); await refreshProjects(); }
+    catch (error) { setProjectsError(String(error)); }
+  };
+
+  const renameProject = async (id: string, projectName: string) => {
+    try {
+      const saved = await loadProject(id);
+      await saveProject({
+        ...saved,
+        updatedAt: new Date().toISOString(),
+        project: { ...saved.project, projectName: projectName.trim() },
+      });
+      await refreshProjects();
+    } catch (error) { setProjectsError(String(error)); }
+  };
+
+  const removeProject = async (id: string) => {
+    try { await deleteProject(id); await refreshProjects(); } catch (error) { setProjectsError(String(error)); }
+  };
 
   const chooseFile = async (kind: "roster" | "response") => {
     if (!isTauriRuntime()) return;
@@ -303,8 +403,10 @@ export default function App() {
     setOutputOpenError("");
     setResult(null);
     setDebugMode(true);
+    setActiveProject(null);
     setValidationTarget(null);
     setStep(3);
+    setScreen("editor");
   };
 
   const clearDebugData = () => {
@@ -327,6 +429,8 @@ export default function App() {
     setResult(null);
     setValidationTarget(null);
     setDebugMode(false);
+    setActiveProject(null);
+    setScreen("list");
   };
 
   const goToValidationTarget = (target: ValidationTarget) => {
@@ -374,6 +478,14 @@ export default function App() {
   };
 
   const nextDisabled = step === 3 && (generating || issues.some((issue) => issue.severity === "error"));
+  if (screen === "list") {
+    return (
+      <div className="app-root">
+        <AppHeader debugAvailable={debugControlsVisible} onFillDebug={() => void fillDebugData()} updateEnabled={isTauriRuntime()} />
+        <ProjectList projects={projects} loading={projectsLoading} error={projectsError} onCreate={() => void createProject()} onOpen={(id) => void openProject(id)} onDuplicate={(id) => void duplicateProject(id)} onRename={(id, name) => void renameProject(id, name)} onDelete={(id) => void removeProject(id)} />
+      </div>
+    );
+  }
   return (
     <AppShell
       step={step}
@@ -387,8 +499,9 @@ export default function App() {
       debugMode={debugMode}
       onFillDebug={() => void fillDebugData()}
       onClearDebug={clearDebugData}
-      headerActions={isTauriRuntime() ? <UpdateManager enabled /> : undefined}
-      appVersion={appVersion}
+      onReturnToProjects={() => void returnToProjectList()}
+      saveStatus={activeProject ? saveStatus : undefined}
+      updateEnabled={isTauriRuntime()}
     >
       {step === 0 ? (
         <ParticipantsStep
