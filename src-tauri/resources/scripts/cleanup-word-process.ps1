@@ -30,10 +30,34 @@ function Test-IsAutomationWord {
 
 function Stop-VerifiedProcess {
     param($Identity)
-    Stop-Process -Id ([int]$Identity.pid) -Force -ErrorAction Stop
-    try { Wait-Process -Id ([int]$Identity.pid) -Timeout 10 -ErrorAction Stop } catch {}
-    if ($null -ne (Get-Process -Id ([int]$Identity.pid) -ErrorAction SilentlyContinue)) {
-        throw "Could not stop generated Word PID $($Identity.pid)."
+    $processId = [int]$Identity.pid
+    Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        $current = Get-Process -Id $processId -ErrorAction SilentlyContinue
+        if ($null -eq $current) { return $true }
+        Start-Sleep -Milliseconds 200
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    # Word can remain briefly while Windows tears down its COM host even after
+    # the owning PowerShell process has ended. Re-check exact PID/start time so
+    # a recycled PID is never touched; report a recoverable deferred cleanup
+    # instead of turning already-complete document generation into a failure.
+    try {
+        $currentIdentity = Get-ProcessIdentity -ProcessId $processId
+        if (-not (Test-SameIdentity $currentIdentity $Identity)) { return $true }
+    }
+    catch { return $true }
+    return $false
+}
+
+function Add-TerminationResult {
+    param($Identity, [bool]$Stopped, [ref]$Terminated, [ref]$Deferred)
+    if ($Stopped) {
+        $Terminated.Value += [int]$Identity.pid
+    }
+    else {
+        $Deferred.Value += [int]$Identity.pid
     }
 }
 
@@ -45,6 +69,7 @@ if (-not (Test-Path -LiteralPath $ProcessInfoPath)) {
 
 $state = Get-Content -Raw -Encoding UTF8 -LiteralPath $ProcessInfoPath | ConvertFrom-Json
 $terminated = @()
+$deferred = @()
 $owned = $state.ownedWord
 
 if ($null -ne $owned) {
@@ -67,8 +92,7 @@ if ($null -ne $owned) {
         if (-not $safeOwnedProcess) {
             throw "PID $($current.pid) could not be verified as the generated Word process and was not stopped."
         }
-        Stop-VerifiedProcess $current
-        $terminated += [int]$current.pid
+        Add-TerminationResult $current (Stop-VerifiedProcess $current) ([ref]$terminated) ([ref]$deferred)
     }
 }
 else {
@@ -90,10 +114,9 @@ else {
             catch {}
         }
     foreach ($candidate in $fallbackCandidates) {
-        Stop-VerifiedProcess $candidate
-        $terminated += [int]$candidate.pid
+        Add-TerminationResult $candidate (Stop-VerifiedProcess $candidate) ([ref]$terminated) ([ref]$deferred)
     }
 }
 
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
-[pscustomobject]@{ terminated = @($terminated); status = "clean" } | ConvertTo-Json -Compress
+[pscustomobject]@{ terminated = @($terminated); deferred = @($deferred); status = if ($deferred.Count -gt 0) { "deferred" } else { "clean" } } | ConvertTo-Json -Compress

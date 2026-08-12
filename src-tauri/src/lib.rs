@@ -486,6 +486,17 @@ fn cleanup_word_process(cleanup_script: &Path, process_info_path: &Path) -> Resu
     Ok(())
 }
 
+fn pdf_conversion_error_detail(stderr: &[u8], fallback: &str) -> String {
+    let detail = error_detail(stderr);
+    if detail.contains("SAMP_PDF_TIMEOUT:") {
+        return "PDF変換が60秒以内に完了しなかったため、変換用Wordを停止しました。もう一度生成してください。".to_string();
+    }
+    if detail.contains("SAMP_PDF_FAILED:") {
+        return detail.split("SAMP_PDF_FAILED:").nth(1).unwrap_or(fallback).trim().chars().take(800).collect();
+    }
+    fallback.to_string()
+}
+
 #[tauri::command]
 fn check_office(app: AppHandle) -> Result<OfficeStatus, AppError> {
     let script = resolve_resource(
@@ -560,6 +571,12 @@ fn generate_documents(
         }
         if error_output.contains("SAMP_IMAGE_INSERT:") {
             return Err(AppError::RouteImageInsertFailed);
+        }
+        if error_output.contains("SAMP_PDF_TIMEOUT:") || error_output.contains("SAMP_PDF_FAILED:") {
+            return Err(AppError::GenerationFailedAt {
+                stage: output.last_stage,
+                detail: pdf_conversion_error_detail(&output.stderr, "登山計画書をPDFへ変換できませんでした。"),
+            });
         }
         return Err(AppError::GenerationFailedAt { stage: output.last_stage, detail: error_detail(&output.stderr) });
     }
