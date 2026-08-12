@@ -1,8 +1,10 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][string]$ProcessInfoPath
 )
 
 $ErrorActionPreference = "Stop"
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Text.UTF8Encoding]::new($false)
 
 function Get-ProcessIdentity {
     param([int]$ProcessId)

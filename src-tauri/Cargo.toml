@@ -1,6 +1,6 @@
 [package]
 name = "sampokai-submission-builder"
-version = "0.1.12"
+version = "0.1.13"
 description = "山歩会の学務提出書類をローカルで作成するWindowsアプリ"
 authors = ["山歩会"]
 edition = "2021"

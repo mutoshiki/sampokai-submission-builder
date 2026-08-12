@@ -470,10 +470,16 @@ fn run_timed_command(
 }
 
 fn error_detail(stderr: &[u8]) -> String {
-    let compact = String::from_utf8_lossy(stderr).lines().map(str::trim)
+    let compact = decode_powershell_utf8(stderr).lines().map(str::trim)
         .filter(|line| !line.is_empty()).collect::<Vec<_>>().join(" ");
     if compact.is_empty() { return "WordまたはPowerShellが処理を完了できませんでした。".to_string(); }
     compact.chars().take(800).collect()
+}
+
+fn decode_powershell_utf8(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes)
+        .trim_start_matches('\u{feff}')
+        .to_string()
 }
 
 fn cleanup_word_process(cleanup_script: &Path, process_info_path: &Path) -> Result<(), String> {
@@ -484,17 +490,6 @@ fn cleanup_word_process(cleanup_script: &Path, process_info_path: &Path) -> Resu
     if output.timed_out { return Err(format!("Word終了処理が{}秒以内に完了しませんでした。", CLEANUP_TIMEOUT_SECONDS)); }
     if !output.status.success() { return Err(error_detail(&output.stderr)); }
     Ok(())
-}
-
-fn pdf_conversion_error_detail(stderr: &[u8], fallback: &str) -> String {
-    let detail = error_detail(stderr);
-    if detail.contains("SAMP_PDF_TIMEOUT:") {
-        return "PDF変換が60秒以内に完了しなかったため、変換用Wordを停止しました。もう一度生成してください。".to_string();
-    }
-    if detail.contains("SAMP_PDF_FAILED:") {
-        return detail.split("SAMP_PDF_FAILED:").nth(1).unwrap_or(fallback).trim().chars().take(800).collect();
-    }
-    fallback.to_string()
 }
 
 #[tauri::command]
@@ -515,7 +510,7 @@ fn check_office(app: AppHandle) -> Result<OfficeStatus, AppError> {
             message: AppError::OfficeUnavailable.to_string(),
         });
     }
-    serde_json::from_slice::<OfficeStatus>(&output.stdout).map_err(|_| AppError::OfficeUnavailable)
+    serde_json::from_str::<OfficeStatus>(&decode_powershell_utf8(&output.stdout)).map_err(|_| AppError::OfficeUnavailable)
 }
 
 #[tauri::command]
@@ -565,22 +560,16 @@ fn generate_documents(
         return Err(AppError::GenerationTimedOut { timeout_seconds: GENERATION_TIMEOUT_SECONDS, stage: output.last_stage });
     }
     if !output.status.success() {
-        let error_output = String::from_utf8_lossy(&output.stderr);
+        let error_output = decode_powershell_utf8(&output.stderr);
         if error_output.contains("SAMP_IMAGE_READ:") {
             return Err(AppError::RouteImageInvalid);
         }
         if error_output.contains("SAMP_IMAGE_INSERT:") {
             return Err(AppError::RouteImageInsertFailed);
         }
-        if error_output.contains("SAMP_PDF_TIMEOUT:") || error_output.contains("SAMP_PDF_FAILED:") {
-            return Err(AppError::GenerationFailedAt {
-                stage: output.last_stage,
-                detail: pdf_conversion_error_detail(&output.stderr, "登山計画書をPDFへ変換できませんでした。"),
-            });
-        }
         return Err(AppError::GenerationFailedAt { stage: output.last_stage, detail: error_detail(&output.stderr) });
     }
-    serde_json::from_slice::<GenerationResult>(&output.stdout).map_err(|_| AppError::GenerationFailedAt {
+    serde_json::from_str::<GenerationResult>(&decode_powershell_utf8(&output.stdout)).map_err(|_| AppError::GenerationFailedAt {
         stage: output.last_stage,
         detail: "生成結果を読み取れませんでした。".to_string(),
     })
@@ -697,5 +686,11 @@ mod tests {
         ).expect("PowerShell timeout");
         assert!(output.timed_out);
         assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn powershell_utf8_output_preserves_japanese_text() {
+        let output = decode_powershell_utf8(b"\xEF\xBB\xBFPDF\xE5\xA4\x89\xE6\x8F\x9B\xE6\xBA\x96\xE5\x82\x99\xE4\xB8\xAD");
+        assert_eq!(output, "PDF変換準備中");
     }
 }

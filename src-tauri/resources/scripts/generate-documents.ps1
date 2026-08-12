@@ -7,6 +7,8 @@
 )
 
 $ErrorActionPreference = "Stop"
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Text.UTF8Encoding]::new($false)
 $wdCharacter = 1
 $wdCollapseStart = 1
 $wdAlignParagraphCenter = 1
@@ -114,48 +116,6 @@ function Register-DocumentWordProcess {
         }
     }
     catch {}
-}
-
-function Convert-PlanToPdfSafely {
-    param([string]$PlanPath, [string]$PdfPath)
-    $workerScript = Join-Path $PSScriptRoot "convert-plan-to-pdf.ps1"
-    $cleanupScript = Join-Path $PSScriptRoot "cleanup-word-process.ps1"
-    if (-not (Test-Path -LiteralPath $workerScript) -or -not (Test-Path -LiteralPath $cleanupScript)) {
-        throw "SAMP_PDF_FAILED: PDF conversion helper files are missing."
-    }
-
-    $token = [guid]::NewGuid().ToString("N")
-    $workerInfoPath = Join-Path $env:TEMP "sampokai-pdf-$token-process.json"
-    $stdoutPath = Join-Path $env:TEMP "sampokai-pdf-$token-out.txt"
-    $stderrPath = Join-Path $env:TEMP "sampokai-pdf-$token-error.txt"
-    $arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$workerScript`" -PlanPath `"$PlanPath`" -PdfPath `"$PdfPath`" -ProcessInfoPath `"$workerInfoPath`""
-    $worker = $null
-    try {
-        $worker = Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath -PassThru
-        if (-not $worker.WaitForExit(60000)) {
-            try { Stop-Process -Id $worker.Id -Force -ErrorAction Stop } catch {}
-            try { & $cleanupScript -ProcessInfoPath $workerInfoPath | Out-Null } catch {}
-            throw "SAMP_PDF_TIMEOUT: PDF conversion did not complete within 60 seconds. The PDF Word process was stopped; retry generation."
-        }
-        $worker.Refresh()
-        $exitCode = $worker.ExitCode
-        if ($null -ne $exitCode -and [int]$exitCode -ne 0) {
-            $detail = if (Test-Path -LiteralPath $stderrPath) { ([string](Get-Content -Raw -LiteralPath $stderrPath)).Trim() } else { "" }
-            if ([string]::IsNullOrWhiteSpace($detail)) { $detail = "Word could not convert the plan to PDF." }
-            throw "SAMP_PDF_FAILED: $detail"
-        }
-        if (-not (Test-Path -LiteralPath $PdfPath) -or (Get-Item -LiteralPath $PdfPath).Length -eq 0) {
-            throw "SAMP_PDF_FAILED: PDF was not created."
-        }
-    }
-    finally {
-        if (Test-Path -LiteralPath $workerInfoPath) {
-            try { & $cleanupScript -ProcessInfoPath $workerInfoPath | Out-Null } catch {}
-        }
-        foreach ($path in @($workerInfoPath, $stdoutPath, $stderrPath)) {
-            if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
-        }
-    }
 }
 
 function Get-JapaneseDay {
@@ -629,21 +589,13 @@ try {
     Format-PlanLabels $document
     $document.Save(); $document.Close($false); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($document); $document = $null
     Normalize-OoxmlPackage $planPath ([string]$payload.project.meetingTime) ([string]$payload.plan.itineraryText) $payload.plan.itinerary
-    Set-GenerationStage "PDF変換用Wordを準備中"
-    if ($null -ne $word) {
-        try { $word.Quit() } catch {}
-        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($word)
-        $word = $null
-        [GC]::Collect(); [GC]::WaitForPendingFinalizers()
-    }
     Set-GenerationStage "登山計画書をPDF変換中"
-    Convert-PlanToPdfSafely -PlanPath $planPath -PdfPath $planPdfPath
+    $document = Open-Document $word $planPath
+    Register-DocumentWordProcess $document
+    $document.ExportAsFixedFormat($planPdfPath, $wdExportFormatPdf)
+    $document.Close($false); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($document); $document = $null
 
     # Hiking notice: direct, format-preserving edits to supplied source template.
-    Set-GenerationStage "Wordを再起動中"
-    $word = New-Object -ComObject Word.Application
-    Register-NewAutomationWordProcess
-    $word.Visible = $false; $word.DisplayAlerts = 0
     Set-GenerationStage "登山等届を作成中"
     $document = Open-Document $word $noticePath
     Register-DocumentWordProcess $document
