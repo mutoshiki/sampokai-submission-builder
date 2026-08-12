@@ -61,6 +61,10 @@ jobs:
         shell: pwsh
         run: |
           $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
+          $cargoVersion = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          if ($cargoVersion -ne $version) {
+            throw "src-tauri/Cargo.toml version $cargoVersion must match package.json version $version."
+          }
           if ($env:GITHUB_REF_NAME -ne "v$version") {
             throw "Tag $env:GITHUB_REF_NAME must match package.json version v$version."
           }

@@ -45,6 +45,18 @@ function Get-UniqueOutputDirectory {
     return (Resolve-Path -LiteralPath $candidate).Path
 }
 
+function Get-NormalFileSystemPath {
+    param([string]$Path)
+    $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
+    if ($resolved.StartsWith("\\\\?\\UNC\\", [StringComparison]::OrdinalIgnoreCase)) {
+        return "\\\\" + $resolved.Substring(8)
+    }
+    if ($resolved.StartsWith("\\\\?\\", [StringComparison]::OrdinalIgnoreCase)) {
+        return $resolved.Substring(4)
+    }
+    return $resolved
+}
+
 function Set-XmlRunFormat {
     param($Run, $NamespaceManager, [string]$Color, [switch]$Underline)
     $properties = $Run.SelectSingleNode("w:rPr", $NamespaceManager)
@@ -370,7 +382,10 @@ $planPdfPath = Join-Path $outputDirectory "02_${safeMountain}登山計画書.pdf
 $noticePath = Join-Path $outputDirectory "03_${safeMountain}_登山等届.docx"
 
 try {
-    $routeImage = (Resolve-Path -LiteralPath ([string]$payload.plan.routeImagePath) -ErrorAction Stop).Path
+    # Tauri can return Windows extended-length paths (\\?\C:\...).  Resolve-Path
+    # represents these with a PowerShell provider prefix, which System.Drawing and
+    # Word cannot open. Convert back to a normal filesystem path before probing.
+    $routeImage = Get-NormalFileSystemPath ([string]$payload.plan.routeImagePath)
     $extension = [IO.Path]::GetExtension($routeImage).ToLowerInvariant()
     if ($extension -notin @(".png", ".jpg", ".jpeg", ".bmp")) { throw "unsupported extension: $extension" }
     Add-Type -AssemblyName System.Drawing
