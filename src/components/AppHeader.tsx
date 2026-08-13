@@ -6,6 +6,8 @@ interface AppHeaderProps {
   windowTitle?: string;
   dataEntryAvailable?: boolean;
   onEnterSampleData?: () => void;
+  onEnterPlanSampleData?: () => void;
+  onEnterSubmissionSampleData?: () => void;
   saveStatus?: "saving" | "saved" | "error";
   updateEnabled?: boolean;
   children?: ReactNode;
@@ -15,6 +17,8 @@ export function AppHeader({
   windowTitle,
   dataEntryAvailable = false,
   onEnterSampleData,
+  onEnterPlanSampleData,
+  onEnterSubmissionSampleData,
   saveStatus,
   updateEnabled = true,
   children,
@@ -31,7 +35,12 @@ export function AppHeader({
       {saveStatus ? <div className="app-header__save-status" aria-live="polite">{saveIndicator}</div> : null}
       {dataEntryAvailable ? (
         <div className="app-header__debug">
-          <Button kind="ghost" size="sm" onClick={onEnterSampleData}>データを入力</Button>
+          {onEnterPlanSampleData && onEnterSubmissionSampleData ? (
+            <>
+              <Button kind="ghost" size="sm" onClick={onEnterPlanSampleData}>登山計画書を入力</Button>
+              <Button kind="ghost" size="sm" onClick={onEnterSubmissionSampleData}>学務提出書類を入力</Button>
+            </>
+          ) : <Button kind="ghost" size="sm" onClick={onEnterSampleData}>データを入力</Button>}
         </div>
       ) : null}
       {children}

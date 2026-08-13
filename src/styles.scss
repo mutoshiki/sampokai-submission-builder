@@ -111,6 +111,7 @@ body {
   max-width: 90rem;
   min-height: calc(100vh - 3rem);
   padding: spacing.$spacing-07;
+  padding-bottom: 7rem;
   margin: 0 auto;
   background: colors.$white-0;
 }
@@ -122,9 +123,10 @@ body {
 .step-navigation {
   display: flex;
   justify-content: flex-end;
-  margin-top: auto;
-  padding-top: spacing.$spacing-09;
-  padding-bottom: spacing.$spacing-07;
+  position: fixed;
+  right: spacing.$spacing-07;
+  bottom: spacing.$spacing-07;
+  z-index: 6000;
 }
 
 .step-navigation__buttons {
@@ -169,6 +171,24 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: spacing.$spacing-06;
 }
+
+.scroll-cue {
+  position: fixed;
+  left: calc(50% + 7.5rem);
+  bottom: calc(#{spacing.$spacing-07} + 1rem);
+  z-index: 5999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  color: colors.$gray-70;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+.project-actions { display: flex; flex-wrap: wrap; gap: spacing.$spacing-03; }
+
+.source-grid--single { grid-template-columns: minmax(0, 1fr); max-width: 42rem; }
 
 .file-source {
   min-height: 7.5rem;
@@ -413,9 +433,14 @@ body {
   margin-top: spacing.$spacing-05;
 }
 
+.handoff-tile { max-width: 48rem; display: grid; gap: spacing.$spacing-04; }
+.handoff-tile h2, .handoff-tile p { margin: 0; }
+.handoff-tile h2 { @include type.type-style("heading-compact-02"); }
+.handoff-action { display: grid; justify-items: start; gap: spacing.$spacing-04; margin-top: spacing.$spacing-06; }
+
 @media (max-width: 1100px) {
   .workspace-shell { grid-template-columns: 12rem minmax(0, 1fr); }
-  .main-content { padding: spacing.$spacing-06; }
+  .main-content { padding: spacing.$spacing-06; padding-bottom: 7rem; }
   .form-grid--three,
   .form-grid--five,
   .mapping-grid,
@@ -429,6 +454,8 @@ body {
   .page-heading--projects { align-items: flex-start; }
   .app-header__save-status { display: none; }
   .workspace-shell { grid-template-columns: minmax(0, 1fr); }
+  .step-navigation { right: spacing.$spacing-05; bottom: spacing.$spacing-05; }
+  .scroll-cue { left: 50%; bottom: calc(#{spacing.$spacing-05} + 1rem); }
   .step-rail {
     position: static;
     min-height: 0;
@@ -438,8 +465,10 @@ body {
 }
 
 @media (max-width: 420px) {
+  .main-content { padding-bottom: 9rem; }
   .step-navigation__buttons {
     flex-direction: column;
     align-items: stretch;
   }
+  .scroll-cue { left: 50%; bottom: 7rem; }
 }

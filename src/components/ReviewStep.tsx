@@ -15,6 +15,7 @@ import {
 import { Folder, FolderOpen } from "@carbon/icons-react";
 import { useEffect } from "react";
 import { focusValidationTarget } from "../lib/focus";
+import { ValidationIssueList } from "./ValidationIssueList";
 import type {
   GenerationResult,
   PrivacyMode,
@@ -41,6 +42,8 @@ interface ReviewStepProps {
   focusTarget: ValidationTarget | null;
   onGoToTarget: (target: ValidationTarget) => void;
   onFocusHandled: () => void;
+  privacyLocked?: boolean;
+  submissionMode?: boolean;
 }
 
 export function ReviewStep({
@@ -59,6 +62,8 @@ export function ReviewStep({
   focusTarget,
   onGoToTarget,
   onFocusHandled,
+  privacyLocked = false,
+  submissionMode = false,
 }: ReviewStepProps) {
   const counts = noticeFaculties.map((faculty) => {
     const members = participants.filter((participant) => participant.faculty === faculty);
@@ -81,7 +86,7 @@ export function ReviewStep({
   return (
     <section aria-labelledby="review-heading">
       <div className="page-heading">
-        <h1 id="review-heading">確認・出力</h1>
+        <h1 id="review-heading">{submissionMode ? "学務提出書類" : "確認・出力"}</h1>
       </div>
 
       <div className="validation-summary">
@@ -90,30 +95,7 @@ export function ReviewStep({
         <div><strong>{warningCount}</strong><span>警告</span></div>
       </div>
 
-      <div className="issue-list">
-        {issues.map((issue) => (
-          <div className="issue-item" key={issue.id}>
-            <InlineNotification
-              kind={issue.severity}
-              title={issue.title}
-              subtitle={issue.detail}
-              hideCloseButton
-              lowContrast
-            />
-            {issue.severity !== "info" && issue.target ? (
-              <Button
-                kind="ghost"
-                size="sm"
-                onClick={() => {
-                  if (issue.target) onGoToTarget(issue.target);
-                }}
-              >
-                修正する
-              </Button>
-            ) : null}
-          </div>
-        ))}
-      </div>
+      <ValidationIssueList issues={issues} onGoToTarget={onGoToTarget} />
 
       <TableContainer aria-label="学部別参加者数">
         <Table size="sm">
@@ -134,6 +116,7 @@ export function ReviewStep({
 
       <div className="review-settings">
         <div>
+          {!privacyLocked ?
           <RadioButtonGroup
             name="privacy-mode"
             legendText="個人情報の記載方法"
@@ -145,6 +128,7 @@ export function ReviewStep({
             <RadioButton value="blank-address-emergency" id="privacy-template" labelText="テンプレート記載どおり：現住所・緊急連絡先を空欄、本人連絡先を記載" />
             <RadioButton value="minimal" id="privacy-minimal" labelText="最小限：現住所・本人連絡先・緊急連絡先をすべて空欄" />
           </RadioButtonGroup>
+          : null}
         </div>
         <div aria-label="出力先">
           <div className="setting-row">
@@ -157,7 +141,7 @@ export function ReviewStep({
         </div>
       </div>
 
-      {generating ? <InlineLoading description={`${generationStage || "WordとPDFを生成中"}。Officeを閉じずにお待ちください。`} /> : null}
+      {generating ? <InlineLoading description={`${generationStage || "Word書類を生成中"}。Officeを閉じずにお待ちください。`} /> : null}
       {generationError ? <InlineNotification kind="error" title="書類を生成できませんでした" subtitle={generationError} hideCloseButton lowContrast /> : null}
       {outputOpenError ? <InlineNotification kind="error" title="完成フォルダを開けませんでした" subtitle={outputOpenError} hideCloseButton lowContrast /> : null}
       {result ? (

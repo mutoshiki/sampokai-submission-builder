@@ -29,6 +29,9 @@ export const validationTargets = {
     meetingTime: { step: 1, fieldId: "meeting-time" },
     weatherPolicy: { step: 1, fieldId: "weather-policy" },
     organizer: { step: 1, fieldId: "organizer" },
+    organizerStudentId: { step: 1, fieldId: "organizer-student-id" },
+    organizerName: { step: 1, fieldId: "organizer-name" },
+    organizerPhone: { step: 1, fieldId: "organizer-phone" },
   },
   plan: {
     entryTime: { step: 2, fieldId: "entry-time", tabIndex: 0 },

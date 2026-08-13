@@ -13,7 +13,6 @@ $wdCharacter = 1
 $wdCollapseStart = 1
 $wdAlignParagraphCenter = 1
 $wdAlignParagraphRight = 2
-$wdExportFormatPdf = 17
 $wdFindStop = 0
 $wdColorBlack = 0
 $wdColorRed = 255
@@ -489,9 +488,10 @@ if ([string]::IsNullOrWhiteSpace($safeMountain)) { throw "invalid mountain name"
 $outputDirectory = Get-UniqueOutputDirectory -Root $outputRoot -BaseName ("{0:yyyy-MM-dd}_{1}登山" -f $eventDate, $safeMountain)
 $participantPath = Join-Path $outputDirectory "01_${safeMountain}登山企画参加者名簿.docx"
 $planPath = Join-Path $outputDirectory "02_${safeMountain}登山計画書.docx"
-$planPdfPath = Join-Path $outputDirectory "02_${safeMountain}登山計画書.pdf"
 $noticePath = Join-Path $outputDirectory "03_${safeMountain}_登山等届.docx"
 
+$routeImage = $null
+if ([string]$payload.mode -ne "submission") {
 try {
     Set-GenerationStage "ルート画像を確認中"
     # Tauri can return Windows extended-length paths (\\?\C:\...).  Resolve-Path
@@ -504,11 +504,12 @@ try {
     $probe = [Drawing.Image]::FromFile($routeImage); $probe.Dispose()
 }
 catch { throw "SAMP_IMAGE_READ: ルート画像を読み込めません。PNG、JPEG、BMP形式の壊れていない画像を選択してください。詳細: $($_.Exception.Message)" }
+}
 
 Set-GenerationStage "テンプレートを準備中"
-Copy-Item -LiteralPath (Join-Path $templateDirectory "participant-roster.docx") -Destination $participantPath
-Copy-Item -LiteralPath (Join-Path $templateDirectory "plan-generation-template.docx") -Destination $planPath
-Copy-Item -LiteralPath (Join-Path $templateDirectory "hiking-notice.docx") -Destination $noticePath
+if ([string]$payload.mode -ne "plan") { Copy-Item -LiteralPath (Join-Path $templateDirectory "participant-roster.docx") -Destination $participantPath }
+if ([string]$payload.mode -ne "submission") { Copy-Item -LiteralPath (Join-Path $templateDirectory "plan-generation-template.docx") -Destination $planPath }
+if ([string]$payload.mode -ne "plan") { Copy-Item -LiteralPath (Join-Path $templateDirectory "hiking-notice.docx") -Destination $noticePath }
 
 $word = $null
 $document = $null
@@ -518,6 +519,7 @@ try {
     Register-NewAutomationWordProcess
     $word.Visible = $false; $word.DisplayAlerts = 0
 
+    if ([string]$payload.mode -ne "plan") {
     # Participant roster: preserve supplied source template's layout and runs.
     Set-GenerationStage "参加者名簿を作成中"
     $document = Open-Document $word $participantPath
@@ -544,7 +546,9 @@ try {
     }
     $document.Save(); $document.Close($false); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($document); $document = $null
     Normalize-OoxmlPackage $participantPath
+    }
 
+    if ([string]$payload.mode -ne "submission") {
     # App-specific hiking-plan template: only replace documented slots.
     Set-GenerationStage "登山計画書を作成中"
     $document = Open-Document $word $planPath
@@ -589,14 +593,8 @@ try {
     Format-PlanLabels $document
     $document.Save(); $document.Close($false); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($document); $document = $null
     Normalize-OoxmlPackage $planPath ([string]$payload.project.meetingTime) ([string]$payload.plan.itineraryText) $payload.plan.itinerary
-    Set-GenerationStage "登山計画書をPDF変換中"
-    $document = Open-Document $word $planPath
-    Register-DocumentWordProcess $document
-    # SaveAs2 works with both Microsoft Word and WPS. Do not fall back to the
-    # legacy fixed-format export: it can hang indefinitely in Microsoft Word COM.
-    $document.SaveAs2($planPdfPath, $wdExportFormatPdf)
-    $document.Close($false); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($document); $document = $null
-
+    }
+    if ([string]$payload.mode -ne "plan") {
     # Hiking notice: direct, format-preserving edits to supplied source template.
     Set-GenerationStage "登山等届を作成中"
     $document = Open-Document $word $noticePath
@@ -628,6 +626,7 @@ try {
     }
     $document.Save(); $document.Close($false); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($document); $document = $null
     Normalize-OoxmlPackage $noticePath
+    }
 }
 finally {
     $stageBeforeCleanup = $script:currentGenerationStage
@@ -640,4 +639,7 @@ finally {
 
 Set-GenerationStage "生成完了"
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
-[pscustomobject]@{ outputDir = $outputDirectory; files = @($participantPath, $planPath, $planPdfPath, $noticePath) } | ConvertTo-Json -Compress
+$files = @($participantPath, $noticePath)
+if ([string]$payload.mode -eq "plan") { $files = @($planPath) }
+elseif ([string]$payload.mode -ne "submission") { $files = @($participantPath, $planPath, $noticePath) }
+[pscustomobject]@{ outputDir = $outputDirectory; files = $files } | ConvertTo-Json -Compress

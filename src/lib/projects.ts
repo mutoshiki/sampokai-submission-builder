@@ -1,6 +1,6 @@
-import type { ProjectSnapshot } from "../types";
+import type { ProjectRole, ProjectSnapshot } from "../types";
 
-export const PROJECT_SCHEMA_VERSION = 1;
+export const PROJECT_SCHEMA_VERSION = 2;
 
 export const createProjectId = () => crypto.randomUUID();
 
@@ -19,3 +19,6 @@ export function duplicateProjectSnapshot(source: ProjectSnapshot, now: string, i
     },
   };
 }
+
+/** v1 projects predate roles and remain leader projects after upgrade. */
+export const projectRole = (snapshot: Pick<ProjectSnapshot, "role">): ProjectRole => snapshot.role ?? "leader";

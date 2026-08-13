@@ -25,13 +25,13 @@ afterEach(cleanup);
 
 describe("scroll cue", () => {
   it("shows only when content remains below viewport", () => {
-    expect(getScrollCueState(1200, 800, 0)).toEqual({ visible: true, quiet: false });
-    expect(getScrollCueState(800, 800, 0)).toEqual({ visible: false, quiet: false });
-    expect(getScrollCueState(1200, 800, 400)).toEqual({ visible: false, quiet: true });
+    expect(getScrollCueState(1200, 800, 0)).toEqual({ visible: true });
+    expect(getScrollCueState(800, 800, 0)).toEqual({ visible: false });
+    expect(getScrollCueState(1200, 800, 400)).toEqual({ visible: false });
   });
 
-  it("hides after scrolling starts", () => {
-    expect(getScrollCueState(1200, 800, 9)).toEqual({ visible: true, quiet: true });
+  it("stays visible until reaching page bottom", () => {
+    expect(getScrollCueState(1200, 800, 9)).toEqual({ visible: true });
   });
 
   it("updates for scroll position and viewport resizing", () => {
@@ -39,7 +39,7 @@ describe("scroll cue", () => {
     const { container } = render(<ScrollCue />);
     expect(container.querySelector(".scroll-cue")).not.toBeNull();
 
-    setScrollTop(9);
+    setScrollTop(400);
     act(() => window.dispatchEvent(new Event("scroll")));
     expect(container.querySelector(".scroll-cue")).toBeNull();
 

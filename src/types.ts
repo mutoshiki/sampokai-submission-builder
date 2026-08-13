@@ -1,4 +1,5 @@
 export type StepId = 0 | 1 | 2 | 3;
+export type ProjectRole = "organizer" | "leader";
 
 export interface ImportedTable {
   sheetName: string;
@@ -47,6 +48,11 @@ export interface ResponseRecord {
   studentId: string;
   name: string;
   address: string;
+}
+
+export interface HandoffParticipant {
+  studentId: string;
+  name: string;
 }
 
 export type MatchStatus =
@@ -163,6 +169,8 @@ export interface ProjectSnapshot {
   createdAt: string;
   updatedAt: string;
   step: StepId;
+  role?: ProjectRole;
+  handoffPath?: string;
   rosterPath: string;
   responsePath: string;
   rosterMapping: ColumnMapping;
@@ -185,4 +193,5 @@ export interface ProjectSummary {
   date: string;
   organizerName: string;
   participantCount: number;
+  role?: ProjectRole;
 }

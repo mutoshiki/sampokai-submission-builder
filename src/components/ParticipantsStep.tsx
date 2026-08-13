@@ -50,6 +50,7 @@ const statusPresentation: Record<MatchResult["status"], { label: string; type: "
 interface ParticipantsStepProps {
   rosterPath: string;
   responsePath: string;
+  handoffPath?: string;
   rosterTable: ImportedTable | null;
   responseTable: ImportedTable | null;
   rosterMapping: ColumnMapping;
@@ -70,6 +71,7 @@ interface ParticipantsStepProps {
   onSelectionChange: (ids: Set<string>) => void;
   onManualMatch: (responseId: string, rosterIndex: number | null) => void;
   onParticipantOverride: (rosterIndex: number, participant: RosterRecord) => void;
+  onParticipantSaved: () => void;
   focusTarget: ValidationTarget | null;
   onFocusHandled: () => void;
 }
@@ -132,7 +134,7 @@ export function ParticipantsStep(props: ParticipantsStepProps) {
         />
         <FileSourcePicker
           id="response-file"
-          label="2. Googleフォーム回答の書き出し"
+          label={props.handoffPath ? "2. 企画者から受け取った引継ぎデータ" : "2. 企画者から受け取った引継ぎデータ"}
           path={props.responsePath}
           loading={props.loadingResponses}
           onPick={props.onPickResponses}
@@ -268,6 +270,7 @@ export function ParticipantsStep(props: ParticipantsStepProps) {
           if (editIndex !== null) props.onParticipantOverride(editIndex, participant);
           setEditIndex(null);
           props.onFocusHandled();
+          props.onParticipantSaved();
         }}
       />
     </section>

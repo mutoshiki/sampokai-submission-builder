@@ -1,5 +1,5 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
-import type { GenerationResult, ImportedTable, OfficeStatus, ProjectSnapshot, ProjectSummary } from "../types";
+import type { GenerationResult, HandoffParticipant, ImportedTable, OfficeStatus, ProjectSnapshot, ProjectSummary } from "../types";
 
 export interface SampleDataDefaults {
   rosterPath: string;
@@ -36,3 +36,5 @@ export const loadProject = (id: string) => invoke<ProjectSnapshot>("load_project
 export const saveProject = (project: ProjectSnapshot) => invoke("save_project", { project });
 
 export const deleteProject = (id: string) => invoke("delete_project", { id });
+
+export const writeParticipantCsv = (path: string, participants: HandoffParticipant[]) => invoke("write_participant_csv", { path, participants });

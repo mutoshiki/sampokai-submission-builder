@@ -3187,7 +3187,7 @@ dependencies = [
 
 [[package]]
 name = "sampokai-submission-builder"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "calamine",
  "chardetng",

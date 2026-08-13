@@ -1,6 +1,5 @@
 import {
   Button,
-  Checkbox,
   ComboBox,
   FormGroup,
   InlineNotification,
@@ -52,19 +51,21 @@ interface PlanStepProps {
   roster: RosterRecord[];
   onChange: (plan: PlanInfo) => void;
   onPickRoute: () => void;
+  includeHomeBase?: boolean;
   focusTarget: ValidationTarget | null;
   onFocusHandled: () => void;
 }
 
-export function PlanStep({ plan, roster, onChange, onPickRoute, focusTarget, onFocusHandled }: PlanStepProps) {
+export function PlanStep({ plan, roster, onChange, onPickRoute, includeHomeBase = true, focusTarget, onFocusHandled }: PlanStepProps) {
   const [selectedTab, setSelectedTab] = useState(0);
+  const [invalidField, setInvalidField] = useState<string | null>(null);
   const [newEquipment, setNewEquipment] = useState("");
   const itineraryText = buildItineraryText(plan.itinerary);
   const duration = durationBetween(plan.entryTime, plan.exitTime);
   const homeBaseItems = roster.map((person, index) => ({ id: String(index), index, label: `${person.name} / ${person.phone || "連絡先なし"}` }));
   const selectedHomeBase = plan.homeBaseRosterIndex === null ? null : homeBaseItems.find((item) => item.index === plan.homeBaseRosterIndex) ?? null;
-  const update = <K extends keyof PlanInfo>(key: K, value: PlanInfo[K]) => onChange({ ...plan, [key]: value });
-  const equipmentItems = [...standardEquipment, ...plan.equipment.filter((item) => !standardEquipment.includes(item))];
+  const update = <K extends keyof PlanInfo>(key: K, value: PlanInfo[K]) => { setInvalidField(null); onChange({ ...plan, [key]: value }); };
+  const extraEquipment = plan.equipment.filter((item) => !standardEquipment.includes(item));
   const addEquipment = () => {
     const item = newEquipment.trim();
     if (!item || plan.equipment.includes(item)) return;
@@ -73,18 +74,19 @@ export function PlanStep({ plan, roster, onChange, onPickRoute, focusTarget, onF
   };
   useEffect(() => {
     if (focusTarget?.tabIndex !== undefined) setSelectedTab(focusTarget.tabIndex);
+    if (focusTarget) setInvalidField(focusTarget.fieldId);
   }, [focusTarget]);
   useEffect(() => {
     if (focusTarget && (focusTarget.tabIndex === undefined || focusTarget.tabIndex === selectedTab) && focusValidationTarget(focusTarget)) {
       onFocusHandled();
     }
   }, [focusTarget, onFocusHandled, selectedTab]);
+  const invalid = (id: string) => invalidField === id;
   return (
     <section aria-labelledby="plan-heading">
       <div className="page-heading">
         <div>
           <h1 id="plan-heading">登山計画</h1>
-          <p>資料にある必須情報だけを入力し、既存テンプレートの3ページへ反映します。</p>
         </div>
       </div>
 
@@ -98,11 +100,11 @@ export function PlanStep({ plan, roster, onChange, onPickRoute, focusTarget, onF
           <TabPanel>
             <FormGroup legendText="数値情報">
               <div className="form-grid form-grid--five">
-                <TextInput id="entry-time" type="time" labelText="入山予定時刻" value={plan.entryTime} onChange={(event) => update("entryTime", event.target.value)} />
-                <TextInput id="exit-time" type="time" labelText="下山予定時刻" value={plan.exitTime} onChange={(event) => update("exitTime", event.target.value)} />
-                <TextInput id="ascent" type="number" min="0" labelText="上り（m）" value={plan.ascent} onChange={(event) => update("ascent", event.target.value)} />
-                <TextInput id="descent" type="number" min="0" labelText="下り（m）" value={plan.descent} onChange={(event) => update("descent", event.target.value)} />
-                <TextInput id="distance" type="number" min="0" step="0.1" labelText="距離（km）" value={plan.distance} onChange={(event) => update("distance", event.target.value)} />
+                <TextInput id="entry-time" invalid={invalid("entry-time")} type="time" labelText="入山予定時刻" value={plan.entryTime} onChange={(event) => update("entryTime", event.target.value)} />
+                <TextInput id="exit-time" invalid={invalid("exit-time")} type="time" labelText="下山予定時刻" value={plan.exitTime} onChange={(event) => update("exitTime", event.target.value)} />
+                <TextInput id="ascent" invalid={invalid("ascent")} type="number" min="0" labelText="上り（m）" value={plan.ascent} onChange={(event) => update("ascent", event.target.value)} />
+                <TextInput id="descent" invalid={invalid("descent")} type="number" min="0" labelText="下り（m）" value={plan.descent} onChange={(event) => update("descent", event.target.value)} />
+                <TextInput id="distance" invalid={invalid("distance")} type="number" min="0" step="0.1" labelText="距離（km）" value={plan.distance} onChange={(event) => update("distance", event.target.value)} />
               </div>
               {duration ? <InlineNotification kind="info" title={`入山から下山まで ${duration}`} subtitle="休憩を含む予定時間として登山計画書へ反映します。" hideCloseButton lowContrast /> : null}
             </FormGroup>
@@ -112,9 +114,10 @@ export function PlanStep({ plan, roster, onChange, onPickRoute, focusTarget, onF
             </div>
           </TabPanel>
           <TabPanel>
-            <RouteImageUploader path={plan.routeImagePath} onPick={onPickRoute} onClear={() => update("routeImagePath", "")} />
+            <div id="route-image" tabIndex={-1}><RouteImageUploader path={plan.routeImagePath} onPick={onPickRoute} onClear={() => update("routeImagePath", "")} /></div>
             <TextArea
               id="escape-plan"
+              invalid={invalid("escape-plan")}
               labelText="企画続行が不可能な場合の対応・エスケープルート"
               helperText="この項目がないと学務で受理されない可能性があると資料に明記されています。"
               rows={5}
@@ -123,19 +126,10 @@ export function PlanStep({ plan, roster, onChange, onPickRoute, focusTarget, onF
             />
           </TabPanel>
           <TabPanel>
-            <FormGroup legendText="持参物">
-              <TextInput id="drink-quantity" labelText="飲料量" value={plan.drinkQuantity} placeholder="例：2L程度" onChange={(event) => update("drinkQuantity", event.target.value)} />
-              <div className="equipment-grid" id="equipment-grid" tabIndex={-1}>
-                {equipmentItems.map((item) => (
-                  <Checkbox
-                    key={item}
-                    id={`equipment-${item}`}
-                    labelText={item}
-                    checked={plan.equipment.includes(item)}
-                    onChange={(_, { checked }) => update("equipment", checked ? [...plan.equipment, item] : plan.equipment.filter((value) => value !== item))}
-                  />
-                ))}
-              </div>
+            <FormGroup legendText="追加の持参物（任意）">
+              <InlineNotification kind="info" title="基本の持参物は計画書へ固定掲載します" subtitle="ここでは企画固有で追加したい持参物だけを入力します。" hideCloseButton lowContrast />
+              <TextInput id="drink-quantity" invalid={invalid("drink-quantity")} labelText="飲料量" value={plan.drinkQuantity} placeholder="例：2L程度" onChange={(event) => update("drinkQuantity", event.target.value)} />
+              {extraEquipment.length ? <div className="equipment-grid" id="equipment-grid">{extraEquipment.map((item) => <div className="setting-row" key={item}><span>{item}</span><Button type="button" kind="ghost" size="sm" onClick={() => update("equipment", plan.equipment.filter((value) => value !== item))}>削除</Button></div>)}</div> : null}
               <div className="setting-row">
                 <TextInput
                   id="new-equipment"
@@ -157,7 +151,7 @@ export function PlanStep({ plan, roster, onChange, onPickRoute, focusTarget, onF
               <ContactEditor title="管轄警察署" contacts={plan.policeContacts} onChange={(contacts) => update("policeContacts", contacts)} addLabel="警察署を追加" />
             </div>
             <ContactEditor title="山小屋等（任意）" contacts={plan.lodgeContacts} onChange={(contacts) => update("lodgeContacts", contacts)} addLabel="連絡先を追加" />
-            <FormGroup legendText="留守本部">
+            {includeHomeBase ? <FormGroup legendText="留守本部">
               <ComboBox
                 id="home-base-member"
                 titleText="全体名簿から選択（任意）"
@@ -175,12 +169,10 @@ export function PlanStep({ plan, roster, onChange, onPickRoute, focusTarget, onF
                 <TextInput id="home-base-name" labelText="留守本部氏名" value={plan.homeBaseName} onChange={(event) => update("homeBaseName", event.target.value)} />
                 <TextInput id="home-base-phone" labelText="携帯電話番号" value={plan.homeBasePhone} onChange={(event) => update("homeBasePhone", event.target.value)} />
               </div>
-            </FormGroup>
+            </FormGroup> : <InlineNotification kind="info" title="留守本部はサークル長が全体名簿から補完します" subtitle="引継ぎファイルには含めません。" hideCloseButton lowContrast />}
           </TabPanel>
         </TabPanels>
       </Tabs>
     </section>
   );
 }
-
-export { standardEquipment };

@@ -8,8 +8,10 @@ import {
 import { ArrowLeft, ArrowRight } from "@carbon/icons-react";
 import type { StepId } from "../types";
 import { AppHeader } from "./AppHeader";
+import { ScrollCue } from "./ScrollCue";
 
-const steps = ["参加者", "企画情報", "登山計画", "確認・出力"];
+const leaderSteps = ["引継ぎ・名簿照合", "提出情報", "提出書類"];
+const organizerSteps = ["参加者選択", "登山計画書", "行程・連絡先", "登山計画書出力"];
 
 interface AppShellProps {
   step: StepId;
@@ -20,11 +22,13 @@ interface AppShellProps {
   nextLabel?: string;
   nextDisabled?: boolean;
   nextIcon?: typeof ArrowRight;
+  hideNext?: boolean;
   projectTitle: string;
   dataEntryAvailable?: boolean;
   onEnterSampleData?: () => void;
   saveStatus?: "saving" | "saved" | "error";
   updateEnabled?: boolean;
+  role?: "organizer" | "leader";
 }
 
 export function AppShell({
@@ -36,12 +40,15 @@ export function AppShell({
   nextLabel = "次へ",
   nextDisabled = false,
   nextIcon = ArrowRight,
+  hideNext = false,
   projectTitle,
   dataEntryAvailable = false,
   onEnterSampleData,
   saveStatus,
   updateEnabled = true,
+  role = "leader",
 }: AppShellProps) {
+  const steps = role === "organizer" ? organizerSteps : leaderSteps;
   return (
     <div className="app-root">
       <AppHeader
@@ -71,11 +78,12 @@ export function AppShell({
           <footer className="step-navigation">
             <div className="step-navigation__buttons">
               <Button kind="secondary" renderIcon={ArrowLeft} onClick={onBack} disabled={step === 0}>戻る</Button>
-              <Button renderIcon={nextIcon} onClick={onNext} disabled={nextDisabled}>{nextLabel}</Button>
+              {!hideNext ? <Button renderIcon={nextIcon} onClick={onNext} disabled={nextDisabled}>{nextLabel}</Button> : null}
             </div>
           </footer>
         </Content>
       </div>
+      <ScrollCue key={step} />
     </div>
   );
 }

@@ -1,7 +1,10 @@
-# Release reporting
+# Release policy
 
-After every completed change, explicitly ask whether to publish an application update.
-Do not bump the version, create a release tag, or push a release unless the user explicitly confirms.
+Do not ask whether to publish. Do not bump the version, create a release tag, or push a release unless the user explicitly requests publication.
+
+## Debug executable
+
+After every completed application change, rebuild and update the latest debug executable before reporting completion. If it is running from the debug output path, close it before rebuilding. Do not publish it.
 
 ## Approved release procedure
 

@@ -3,6 +3,7 @@ use chardetng::EncodingDetector;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::thread;
@@ -45,6 +46,12 @@ enum AppError {
     ProjectStorage,
     #[error("企画データが壊れているか、このアプリでは読み込めない形式です。")]
     ProjectDataInvalid,
+    #[error("引継ぎファイルが壊れているか、対応していない形式です。")]
+    HandoffDataInvalid,
+    #[error("引継ぎファイルの保存先に同名ファイルがあります。元ファイルを上書きしないため、別名を指定してください。")]
+    HandoffAlreadyExists,
+    #[error("引継ぎファイルを保存できませんでした。")]
+    HandoffWrite,
 }
 
 impl Serialize for AppError {
@@ -124,7 +131,12 @@ struct ProjectSummary {
     date: String,
     organizer_name: String,
     participant_count: usize,
+    role: Option<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HandoffPerson { student_id: String, name: String }
 
 fn project_directory(app: &AppHandle) -> Result<PathBuf, AppError> {
     let directory = app.path().app_data_dir().map_err(|_| AppError::ProjectStorage)?.join("projects");
@@ -145,7 +157,7 @@ fn read_project(path: &Path) -> Result<Value, AppError> {
     let bytes = fs::read(path).or_else(|_| fs::read(path.with_extension("bak"))).map_err(|_| AppError::ProjectStorage)?;
     let project = serde_json::from_slice::<Value>(&bytes).map_err(|_| AppError::ProjectDataInvalid)?;
     // Later versions add migrations at this gate; never deserialize unknown shapes into editor state.
-    let valid = project.get("schemaVersion").and_then(Value::as_u64) == Some(1) && project.get("id").and_then(Value::as_str).is_some();
+    let valid = matches!(project.get("schemaVersion").and_then(Value::as_u64), Some(1 | 2)) && project.get("id").and_then(Value::as_str).is_some();
     if valid { Ok(project) } else { Err(AppError::ProjectDataInvalid) }
 }
 
@@ -163,6 +175,7 @@ fn project_summary(value: &Value) -> Option<ProjectSummary> {
         mountain_name: string_at(value, &["project", "mountainName"]), project_name: string_at(value, &["project", "projectName"]), date: string_at(value, &["project", "date"]),
         organizer_name: string_at(value, &["project", "organizer", "name"]),
         participant_count: value.get("selectedIds").and_then(Value::as_array).map_or(0, Vec::len),
+        role: value.get("role").and_then(Value::as_str).map(str::to_string),
     })
 }
 
@@ -199,8 +212,29 @@ fn load_project(app: AppHandle, id: String) -> Result<Value, AppError> {
 #[tauri::command]
 fn save_project(app: AppHandle, project: Value) -> Result<(), AppError> {
     let id = project.get("id").and_then(Value::as_str).ok_or(AppError::ProjectDataInvalid)?;
-    if project.get("schemaVersion").and_then(Value::as_u64) != Some(1) { return Err(AppError::ProjectDataInvalid); }
+    if !matches!(project.get("schemaVersion").and_then(Value::as_u64), Some(1 | 2)) { return Err(AppError::ProjectDataInvalid); }
     let path = project_path(&project_directory(&app)?, id)?; save_project_file(&path, &project)
+}
+
+#[tauri::command]
+fn write_participant_csv(path: String, participants: Vec<HandoffPerson>) -> Result<(), AppError> {
+    if participants.is_empty() || participants.iter().any(|person| person.student_id.trim().is_empty() && person.name.trim().is_empty()) {
+        return Err(AppError::HandoffDataInvalid);
+    }
+    let path = PathBuf::from(path);
+    if path.exists() { return Err(AppError::HandoffAlreadyExists); }
+    let parent = path.parent().filter(|parent| parent.is_dir()).ok_or(AppError::HandoffWrite)?;
+    let mut temp = tempfile::NamedTempFile::new_in(parent).map_err(|_| AppError::HandoffWrite)?;
+    temp.write_all(&[0xEF, 0xBB, 0xBF]).map_err(|_| AppError::HandoffWrite)?;
+    {
+        let mut writer = csv::WriterBuilder::new().has_headers(false).from_writer(temp.as_file_mut());
+        writer.write_record(["学籍番号", "氏名"]).map_err(|_| AppError::HandoffWrite)?;
+        for person in participants { writer.write_record([person.student_id, person.name]).map_err(|_| AppError::HandoffWrite)?; }
+        writer.flush().map_err(|_| AppError::HandoffWrite)?;
+    }
+    temp.as_file_mut().sync_all().map_err(|_| AppError::HandoffWrite)?;
+    temp.persist(path).map_err(|_| AppError::HandoffWrite)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -604,7 +638,8 @@ pub fn run() {
             list_projects,
             load_project,
             save_project,
-            delete_project
+            delete_project,
+            write_participant_csv
         ])
         .run(tauri::generate_context!())
         .expect("failed to run application");
@@ -690,7 +725,20 @@ mod tests {
 
     #[test]
     fn powershell_utf8_output_preserves_japanese_text() {
-        let output = decode_powershell_utf8(b"\xEF\xBB\xBFPDF\xE5\xA4\x89\xE6\x8F\x9B\xE6\xBA\x96\xE5\x82\x99\xE4\xB8\xAD");
-        assert_eq!(output, "PDF変換準備中");
+        let output = decode_powershell_utf8("\u{feff}書類を作成中".as_bytes());
+        assert_eq!(output, "書類を作成中");
     }
+
+    #[test]
+    fn participant_csv_contains_matching_keys_only() {
+        let directory = tempfile::tempdir().expect("csv directory");
+        let path = directory.path().join("participants.csv");
+        write_participant_csv(path.to_string_lossy().into_owned(), vec![HandoffPerson {
+            student_id: "25A001".to_string(), name: "田中 太郎".to_string(),
+        }]).expect("write csv");
+        let table = load_tabular_file(path.to_string_lossy().into_owned()).expect("read csv");
+        assert_eq!(table.columns, vec!["学籍番号", "氏名"]);
+        assert_eq!(table.rows, vec![vec!["25A001".to_string(), "田中 太郎".to_string()]]);
+    }
+
 }
