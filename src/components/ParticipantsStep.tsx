@@ -32,7 +32,7 @@ import { ParticipantEditorModal } from "./ParticipantEditorModal";
 
 const headers = [
   { key: "selected", header: "参加" },
-  { key: "response", header: "フォーム回答" },
+  { key: "response", header: "引継ぎデータ" },
   { key: "matched", header: "全体名簿" },
   { key: "status", header: "照合結果" },
   { key: "confirmation", header: "確認・補正" },
@@ -146,22 +146,22 @@ export function ParticipantsStep(props: ParticipantsStepProps) {
         <ColumnMappingPanel title="全体名簿" kind="roster" table={props.rosterTable} mapping={props.rosterMapping} onChange={props.onRosterMappingChange} />
       ) : null}
       {props.responseTable ? (
-        <ColumnMappingPanel title="フォーム回答" kind="response" table={props.responseTable} mapping={props.responseMapping} onChange={props.onResponseMappingChange} />
+        <ColumnMappingPanel title="引継ぎデータ" kind="response" table={props.responseTable} mapping={props.responseMapping} onChange={props.onResponseMappingChange} />
       ) : null}
 
       {props.matches.length ? (
         <div className="participant-table-section" id="participant-matches" tabIndex={-1}>
           <div className="summary-line" aria-label="照合サマリー">
-            <span>回答 {props.matches.length}件</span>
+            <span>引継ぎデータ {props.matches.length}件</span>
             <span>参加者 {props.selectedIds.size}人</span>
             <span>選択中の未照合 {unresolvedSelected}人</span>
-            <span>重複回答 {props.duplicateResponseIds.size}件</span>
+            <span>重複 {props.duplicateResponseIds.size}件</span>
           </div>
           {props.duplicateResponseIds.size ? (
             <InlineNotification
               kind="warning"
-              title="重複回答があります"
-              subtitle="同じ学籍番号または氏名の回答が複数あります。参加する回答だけを選択してください。"
+              title="重複した引継ぎデータがあります"
+              subtitle="同じ学籍番号または氏名のデータが複数あります。参加する人だけを選択してください。"
               hideCloseButton
               lowContrast
             />

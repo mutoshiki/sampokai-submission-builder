@@ -1,6 +1,8 @@
-import { Button, Header, HeaderGlobalBar, HeaderName, InlineLoading } from "@carbon/react";
-import type { ReactNode } from "react";
+import { Button, Header, HeaderGlobalAction, HeaderGlobalBar, HeaderName, InlineLoading } from "@carbon/react";
+import { Help } from "@carbon/icons-react";
+import { useState, type ReactNode } from "react";
 import { UpdateManager } from "./UpdateManager";
+import { UsageHelpModal } from "./UsageHelpModal";
 
 interface AppHeaderProps {
   windowTitle?: string;
@@ -23,6 +25,7 @@ export function AppHeader({
   updateEnabled = true,
   children,
 }: AppHeaderProps) {
+  const [helpOpen, setHelpOpen] = useState(false);
   const saveIndicator = saveStatus === "saving"
     ? <InlineLoading status="active" description="保存中" />
     : saveStatus === "error"
@@ -44,7 +47,13 @@ export function AppHeader({
         </div>
       ) : null}
       {children}
-      {updateEnabled ? <HeaderGlobalBar><UpdateManager enabled /></HeaderGlobalBar> : null}
+      <HeaderGlobalBar>
+        <HeaderGlobalAction aria-label="使い方" tooltipAlignment="end" onClick={() => setHelpOpen(true)}>
+          <Help />
+        </HeaderGlobalAction>
+        {updateEnabled ? <UpdateManager enabled /> : null}
+      </HeaderGlobalBar>
+      <UsageHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </Header>
   );
 }

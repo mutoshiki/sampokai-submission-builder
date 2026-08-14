@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebviewWindow, WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { DocumentExport } from "@carbon/icons-react";
 import { AppHeader } from "./components/AppHeader";
 import { AppShell } from "./components/AppShell";
 import { ProjectList } from "./components/ProjectList";
 import { ParticipantsStep } from "./components/ParticipantsStep";
 import { OrganizerParticipantsStep } from "./components/OrganizerParticipantsStep";
-import { HandoffStep } from "./components/HandoffStep";
+import { OrganizerOverview } from "./components/OrganizerOverview";
 import { ProjectStep } from "./components/ProjectStep";
 import { PlanStep } from "./components/PlanStep";
 import { ReviewStep } from "./components/ReviewStep";
@@ -99,11 +100,27 @@ const emptyProjectSnapshot = (now = new Date().toISOString(), id: string = creat
 });
 
 const isTauriRuntime = () => Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
+type OrganizerEditorScope = "participants" | "plan";
+type EditorNavigationRequest = { target: ValidationTarget; scope: OrganizerEditorScope };
+const organizerEditorSteps = (scope: OrganizerEditorScope): StepId[] => scope === "participants" ? [0] : [2, 3];
 
 export default function App() {
   const projectWindowId = useMemo(() => new URLSearchParams(window.location.search).get("project"), []);
+  const windowMode = useMemo(() => new URLSearchParams(window.location.search).get("mode"), []);
+  const isEditorWindow = windowMode === "editor";
+  const requestedEditorScope = useMemo<OrganizerEditorScope>(() => new URLSearchParams(window.location.search).get("scope") === "participants" ? "participants" : "plan", []);
+  const requestedEditorTarget = useMemo<ValidationTarget | null>(() => {
+    if (!isEditorWindow) return null;
+    const search = new URLSearchParams(window.location.search);
+    const step = Number(search.get("step"));
+    const fieldId = search.get("field");
+    if (!Number.isInteger(step) || step < 0 || step > 3 || !fieldId) return null;
+    const tab = search.get("tab");
+    return { step: step as StepId, fieldId, ...(tab === null ? {} : { tabIndex: Number(tab) }) };
+  }, [isEditorWindow]);
   const isProjectWindow = Boolean(projectWindowId);
   const [screen, setScreen] = useState<"list" | "editor">(isProjectWindow ? "editor" : "list");
+  const [editorScope, setEditorScope] = useState<OrganizerEditorScope>(requestedEditorScope);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsError, setProjectsError] = useState("");
@@ -142,6 +159,8 @@ export default function App() {
   const [validationTarget, setValidationTarget] = useState<ValidationTarget | null>(null);
   const [validationReturnStep, setValidationReturnStep] = useState<StepId | null>(null);
   const [sampleDataControlVisible, setSampleDataControlVisible] = useState(false);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const autosaveTimer = useRef<number | null>(null);
 
   const refreshProjects = async () => {
     if (!isTauriRuntime()) return;
@@ -196,6 +215,7 @@ export default function App() {
     ? validateLeaderSubmission(selectedMatches, resolvedParticipants, currentProject, outputRoot)
     : [],
   [role, selectedMatches, resolvedParticipants, currentProject, outputRoot]);
+  const isOrganizerOverview = !isEditorWindow && role === "organizer" && step === 1;
 
   useEffect(() => {
     if (!isTauriRuntime() || isProjectWindow) return;
@@ -208,15 +228,40 @@ export default function App() {
     manualMatches, participantOverrides, selectedIds: [...selectedIds], project: currentProject, plan, privacyMode, outputRoot,
   } : null;
 
+  const queueSave = async (current: ProjectSnapshot) => {
+    const task = saveQueue.current.catch(() => undefined).then(async () => {
+      await saveProject(current);
+      if (isEditorWindow) void emitTo(`project-${current.id}`, "project-updated", { id: current.id }).catch(() => undefined);
+    });
+    saveQueue.current = task;
+    await task;
+  };
+
+  const saveCurrentProject = async () => {
+    const current = snapshot();
+    if (!current || !isTauriRuntime()) return true;
+    if (autosaveTimer.current !== null) {
+      window.clearTimeout(autosaveTimer.current);
+      autosaveTimer.current = null;
+    }
+    setSaveStatus("saving");
+    try { await queueSave(current); setSaveStatus("saved"); return true; }
+    catch { setSaveStatus("error"); return false; }
+  };
+
   useEffect(() => {
     const current = snapshot();
-    if (!current || screen !== "editor" || !isTauriRuntime()) return;
+    if (!current || screen !== "editor" || !isTauriRuntime() || isOrganizerOverview) return;
     setSaveStatus("saving");
-    const timer = window.setTimeout(() => {
-      void saveProject(current).then(() => setSaveStatus("saved")).catch(() => setSaveStatus("error"));
+    autosaveTimer.current = window.setTimeout(() => {
+      autosaveTimer.current = null;
+      void queueSave(current).then(() => setSaveStatus("saved")).catch(() => setSaveStatus("error"));
     }, 700);
-    return () => window.clearTimeout(timer);
-  }, [screen, activeProject, step, role, handoffPath, rosterPath, responsePath, rosterMapping, responseMapping, manualMatches, participantOverrides, selectedIds, currentProject, plan, privacyMode, outputRoot]);
+    return () => {
+      if (autosaveTimer.current !== null) window.clearTimeout(autosaveTimer.current);
+      autosaveTimer.current = null;
+    };
+  }, [screen, activeProject, step, role, handoffPath, rosterPath, responsePath, rosterMapping, responseMapping, manualMatches, participantOverrides, selectedIds, currentProject, plan, privacyMode, outputRoot, isOrganizerOverview]);
 
   const toggleDebugControls = () => setSampleDataControlVisible((visible) => !visible);
   useDebugShortcut(toggleDebugControls, isTauriRuntime());
@@ -225,7 +270,7 @@ export default function App() {
     if (!isTauriRuntime()) return;
     let unlisten: (() => void) | undefined;
     void getCurrentWebviewWindow().onDragDropEvent((event) => {
-      if (role !== "organizer" || step !== 2 || event.payload.type !== "drop") return;
+      if (role !== "organizer" || step !== 3 || event.payload.type !== "drop") return;
       const image = event.payload.paths.find((path) => /\.(png|jpe?g|bmp)$/i.test(path));
       if (image) {
         void allowRouteImagePreview(image).then(() => {
@@ -236,22 +281,24 @@ export default function App() {
     return () => unlisten?.();
   }, [role, step]);
 
-  const applySnapshot = async (saved: ProjectSnapshot) => {
+  const applySnapshot = async (saved: ProjectSnapshot, editorTarget: ValidationTarget | null = null) => {
     setActiveProject({ id: saved.id, createdAt: saved.createdAt });
     const savedRole = projectRole(saved);
     setRole(savedRole); setHandoffPath(saved.handoffPath ?? "");
-    setStep((savedRole === "leader" ? Math.min(saved.step, 2) : saved.step) as StepId); setRosterPath(saved.rosterPath); setResponsePath(saved.responsePath);
+    const organizerStep: StepId = 1;
+    const editorStep: StepId = editorTarget?.step ?? (saved.step === 2 || saved.step === 3 ? saved.step : 0);
+    setStep((savedRole === "leader" ? Math.min(saved.step, 2) : isEditorWindow ? editorStep : organizerStep) as StepId); setRosterPath(saved.rosterPath); setResponsePath(saved.responsePath);
     setRosterMapping(saved.rosterMapping); setResponseMapping(saved.responseMapping);
     setManualMatches(saved.manualMatches); setParticipantOverrides(saved.participantOverrides);
     setSelectedIds(new Set(saved.selectedIds)); setProject(saved.project); setPlan(saved.plan);
     setPrivacyMode(savedRole === "leader" ? "full" : saved.privacyMode); setOutputRoot(saved.outputRoot); setResult(null); setGenerationError("");
-    setImportError(""); setValidationTarget(null);
+    setImportError(""); setValidationTarget(editorTarget);
     const missing: string[] = [];
     if (saved.rosterPath) {
       try { setRosterTable(await loadTabularFile(saved.rosterPath)); } catch { setRosterTable(null); missing.push("元名簿"); }
     } else setRosterTable(null);
     if (saved.responsePath) {
-      try { setResponseTable(await loadTabularFile(saved.responsePath)); } catch { setResponseTable(null); missing.push("フォーム回答"); }
+      try { setResponseTable(await loadTabularFile(saved.responsePath)); } catch { setResponseTable(null); missing.push(savedRole === "leader" ? "引継ぎデータ" : "Googleフォーム回答"); }
     } else setResponseTable(null);
     if (saved.plan.routeImagePath) {
       try { await allowRouteImagePreview(saved.plan.routeImagePath); } catch { missing.push("ルート画像"); }
@@ -274,6 +321,37 @@ export default function App() {
       title: "山歩会 提出書類作成ツール",
       url: url.href,
       width: 1280,
+      height: 800,
+      minWidth: 1024,
+      minHeight: 680,
+      resizable: true,
+      center: true,
+    });
+  };
+
+  const openOrganizerEditor = async (target: ValidationTarget) => {
+    if (!activeProject || !isTauriRuntime()) return;
+    const scope: OrganizerEditorScope = target.step === 0 ? "participants" : "plan";
+    const label = `project-editor-${activeProject.id}`;
+    const existing = await WebviewWindow.getByLabel(label);
+    if (existing) {
+      await emitTo(label, "project-edit-target", { target, scope } satisfies EditorNavigationRequest);
+      if (await existing.isMinimized()) await existing.unminimize();
+      await existing.setFocus();
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.searchParams.set("project", activeProject.id);
+    url.searchParams.set("mode", "editor");
+    url.searchParams.set("scope", scope);
+    url.searchParams.set("step", String(target.step));
+    url.searchParams.set("field", target.fieldId);
+    if (target.tabIndex !== undefined) url.searchParams.set("tab", String(target.tabIndex));
+    new WebviewWindow(label, {
+      title: `${currentProject.projectName?.trim() || defaultProjectName(currentProject.mountainName)} - 編集`,
+      url: url.href,
+      width: 1180,
       height: 800,
       minWidth: 1024,
       minHeight: 680,
@@ -503,10 +581,33 @@ export default function App() {
   useEffect(() => {
     if (!projectWindowId || !isTauriRuntime()) return;
     void loadProject(projectWindowId)
-      .then((saved) => applySnapshot(saved))
+      .then((saved) => applySnapshot(saved, requestedEditorTarget))
       .then(() => setScreen("editor"))
       .catch((error) => setProjectsError(String(error)));
   }, []);
+
+  useEffect(() => {
+    if (!projectWindowId || !isTauriRuntime() || isEditorWindow) return;
+    const reloadProject = () => void loadProject(projectWindowId).then((saved) => applySnapshot(saved)).catch((error) => setProjectsError(String(error)));
+    let unlisten: (() => void) | undefined;
+    void listen<{ id: string }>("project-updated", (event) => {
+      if (event.payload.id === projectWindowId) reloadProject();
+    }).then((callback) => { unlisten = callback; });
+    window.addEventListener("focus", reloadProject);
+    return () => { window.removeEventListener("focus", reloadProject); unlisten?.(); };
+  }, [projectWindowId, isEditorWindow]);
+
+  useEffect(() => {
+    if (!isEditorWindow || !isTauriRuntime()) return;
+    let unlisten: (() => void) | undefined;
+    void listen<EditorNavigationRequest>("project-edit-target", (event) => {
+      setValidationReturnStep(null);
+      setEditorScope(event.payload.scope);
+      setValidationTarget(event.payload.target);
+      setStep(event.payload.target.step);
+    }).then((callback) => { unlisten = callback; });
+    return () => unlisten?.();
+  }, [isEditorWindow]);
 
   useEffect(() => {
     if (!isTauriRuntime() || screen !== "list") return;
@@ -538,7 +639,7 @@ export default function App() {
     mode: "plan",
     privacyMode: "minimal",
     participants: [],
-    project,
+    project: currentProject,
     plan: {
       ...plan,
       totalDurationText: durationBetween(plan.entryTime, plan.exitTime),
@@ -570,7 +671,7 @@ export default function App() {
     catch (error) { setHandoffError(String(error)); } finally { setHandoffExporting(false); }
   };
 
-  const planIssues = useMemo(() => validateHikingPlan(project, plan), [project, plan]);
+  const planIssues = useMemo(() => validateHikingPlan(currentProject, plan), [currentProject, plan]);
   const planErrors = planIssues.filter((issue) => issue.severity === "error");
   const exportPlan = async () => {
     if (!isTauriRuntime() || planExporting || planErrors.length) return;
@@ -584,7 +685,36 @@ export default function App() {
     catch (error) { setPlanExportError(String(error)); } finally { setPlanExporting(false); }
   };
 
+  const finishOrganizerEditing = async () => {
+    if (!await saveCurrentProject()) return;
+    const parent = activeProject ? await WebviewWindow.getByLabel(`project-${activeProject.id}`) : null;
+    if (parent) { if (await parent.isMinimized()) await parent.unminimize(); await parent.setFocus(); }
+    await getCurrentWebviewWindow().close();
+  };
+
+  const handleEditorBack = () => {
+    if (role === "organizer" && isEditorWindow) {
+      const steps = organizerEditorSteps(editorScope);
+      const index = steps.indexOf(step);
+      if (index <= 0) { void finishOrganizerEditing(); return; }
+      setStep(steps[index - 1]);
+      return;
+    }
+    setStep((Math.max(0, step - 1) as StepId));
+  };
+
   const handleNext = () => {
+    if (role === "organizer") {
+      if (isEditorWindow) {
+        const steps = organizerEditorSteps(editorScope);
+        const index = steps.indexOf(step);
+        if (index >= steps.length - 1) { void finishOrganizerEditing(); return; }
+        setStep(steps[Math.max(index, 0) + 1]);
+        return;
+      }
+      if (step === 0) void saveCurrentProject().then((saved) => { if (saved) setStep(1); });
+      return;
+    }
     const lastStep = role === "leader" ? 2 : 3;
     if (step < lastStep) setStep((step + 1) as StepId);
     else if (role === "leader") void generate();
@@ -594,7 +724,7 @@ export default function App() {
   const handoffIssues = useMemo(() => validateHandoff(handoffParticipants), [handoffParticipants]);
   const handoffReady = !handoffIssues.some((issue) => issue.severity === "error");
   const nextDisabled = role === "organizer"
-    ? step === 3 && (handoffExporting || !handoffReady)
+    ? !isEditorWindow && step === 0 && !handoffReady
     : step === 2 && (generating || issues.some((issue) => issue.severity === "error"));
   if (screen === "list") {
     return (
@@ -609,17 +739,39 @@ export default function App() {
       </div>
     );
   }
+  if (isOrganizerOverview) {
+    return <div className="app-root">
+      <AppHeader
+        windowTitle={currentProject.projectName?.trim() || defaultProjectName(currentProject.mountainName)}
+        dataEntryAvailable={sampleDataControlVisible}
+        onEnterSampleData={() => void enterSampleData()}
+        saveStatus={activeProject ? saveStatus : undefined}
+        updateEnabled={isTauriRuntime()}
+      />
+      <main className="overview-home">
+        <OrganizerOverview
+          plan={plan} participants={handoffParticipants} handoffIssues={handoffIssues} handoffReady={handoffReady}
+          handoffExporting={handoffExporting} handoffError={handoffError} exportedHandoffPath={exportedHandoffPath}
+          planIssues={planIssues} planReady={!planErrors.length} planExporting={planExporting} planExportError={planExportError} exportedPlanPath={exportedPlanPath} outputOpenError={outputOpenError}
+          onEdit={(target) => void openOrganizerEditor(target)} onExportHandoff={() => void exportHandoff()} onExportPlan={() => void exportPlan()}
+          onOpenHandoffOutput={() => { if (!exportedHandoffPath) return; setOutputOpenError(""); void openOutputFolder(exportedHandoffPath.replace(/[\\/][^\\/]+$/, "")).catch((error) => setOutputOpenError(String(error))); }}
+          onOpenPlanOutput={() => { if (!exportedPlanPath) return; setOutputOpenError(""); void openOutputFolder(exportedPlanPath.replace(/[\\/][^\\/]+$/, "")).catch((error) => setOutputOpenError(String(error))); }}
+        />
+      </main>
+    </div>;
+  }
   return (
     <AppShell
       step={step}
-      onBack={() => setStep((Math.max(0, step - 1) as StepId))}
+      onBack={handleEditorBack}
       onNext={handleNext}
       onStepChange={setStep}
-      nextLabel={(role === "organizer" && step === 3) ? "引継ぎファイルを書き出す" : (role === "leader" && step === 2) ? "提出書類を作成" : "次へ"}
+      nextLabel={(role === "organizer" && isEditorWindow && step === organizerEditorSteps(editorScope).at(-1)) ? "編集を完了" : (role === "leader" && step === 2) ? "提出書類を作成" : "次へ"}
       role={role}
-      hideNext={role === "organizer" && step === 3}
+      organizerEditing={role === "organizer" && isEditorWindow ? editorScope : false}
+      hideNext={role === "organizer" && !isEditorWindow && step !== 0}
       nextDisabled={nextDisabled}
-      nextIcon={(role === "organizer" && step === 3) || (role === "leader" && step === 2) ? DocumentExport : undefined}
+      nextIcon={role === "leader" && step === 2 ? DocumentExport : undefined}
       projectTitle={currentProject.projectName?.trim() || defaultProjectName(currentProject.mountainName)}
       dataEntryAvailable={sampleDataControlVisible}
       onEnterSampleData={() => void enterSampleData()}
@@ -629,7 +781,7 @@ export default function App() {
       {step === 0 && role === "organizer" ? <OrganizerParticipantsStep
           responsePath={responsePath} responseTable={responseTable} responseMapping={responseMapping} responses={responses} selectedIds={selectedIds}
           loading={loadingResponses} error={importError} onPick={() => void chooseFile("response")} onClear={() => { setResponsePath(""); setResponseTable(null); setResponseMapping(emptyMapping()); setSelectedIds(new Set()); }} onMappingChange={setResponseMapping} onSelectionChange={setSelectedIds}
-           handoffIssues={handoffIssues} canExportHandoff={handoffReady} handoffExporting={handoffExporting} handoffError={handoffError} exportedHandoffPath={exportedHandoffPath} onExportHandoff={() => void exportHandoff()} focusTarget={validationTarget} onGoToTarget={goToValidationTarget} onFocusHandled={clearValidationTarget}
+           focusTarget={validationTarget} onGoToTarget={goToValidationTarget} onFocusHandled={clearValidationTarget}
         /> : null}
       {step === 0 && role === "leader" ? (
         <ParticipantsStep
@@ -674,13 +826,9 @@ export default function App() {
            onFocusHandled={clearValidationTarget}
         />
       ) : null}
-      {step === 1 ? <ProjectStep project={currentProject} role={role} roster={roster} onChange={setProject} focusTarget={validationTarget} onFocusHandled={clearValidationTarget} /> : null}
-      {step === 2 && role === "organizer" ? <PlanStep plan={plan} roster={roster} onChange={setPlan} onPickRoute={() => void chooseRoute()} includeHomeBase focusTarget={validationTarget} onFocusHandled={clearValidationTarget} /> : null}
-      {step === 3 && role === "organizer" ? <HandoffStep exporting={planExporting} error={planExportError} path={exportedPlanPath} canExport={!planErrors.length} onExport={() => void exportPlan()} issues={planIssues} onGoToTarget={goToValidationTarget} outputOpenError={outputOpenError} onOpenOutput={() => {
-        if (!exportedPlanPath) return;
-        setOutputOpenError("");
-        void openOutputFolder(exportedPlanPath.replace(/[\\/][^\\/]+$/, "")).catch((error) => setOutputOpenError(String(error)));
-      }} /> : null}
+      {step === 1 && role === "leader" ? <ProjectStep project={currentProject} role={role} roster={roster} onChange={setProject} focusTarget={validationTarget} onFocusHandled={clearValidationTarget} /> : null}
+      {step === 2 && role === "organizer" ? <ProjectStep project={currentProject} role={role} roster={roster} onChange={setProject} focusTarget={validationTarget} onFocusHandled={clearValidationTarget} /> : null}
+      {step === 3 && role === "organizer" ? <PlanStep plan={plan} roster={roster} onChange={setPlan} onPickRoute={() => void chooseRoute()} includeHomeBase focusTarget={validationTarget} onFocusHandled={clearValidationTarget} /> : null}
       {step === 2 && role === "leader" ? (
         <ReviewStep
           participants={participants}

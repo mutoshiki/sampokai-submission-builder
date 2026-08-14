@@ -1,11 +1,10 @@
-import { Button, Checkbox, DataTable, InlineLoading, InlineNotification, Search, Table, TableBody, TableCell, TableContainer, TableHead, TableHeader, TableRow, TableToolbar, TableToolbarContent } from "@carbon/react";
-import { Checkmark, DocumentExport, Renew } from "@carbon/icons-react";
+import { Button, Checkbox, DataTable, InlineNotification, Search, Table, TableBody, TableCell, TableContainer, TableHead, TableHeader, TableRow, TableToolbar, TableToolbarContent } from "@carbon/react";
+import { Checkmark, Renew } from "@carbon/icons-react";
 import { useEffect, useMemo, useState } from "react";
 import { focusValidationTarget } from "../lib/focus";
-import type { ColumnMapping, ImportedTable, ResponseRecord, ValidationIssue, ValidationTarget } from "../types";
+import type { ColumnMapping, ImportedTable, ResponseRecord, ValidationTarget } from "../types";
 import { ColumnMappingPanel } from "./ColumnMappingPanel";
 import { FileSourcePicker } from "./FileSourcePicker";
-import { ValidationIssueList } from "./ValidationIssueList";
 
 const headers = [
   { key: "selected", header: "選択" }, { key: "name", header: "氏名" }, { key: "studentId", header: "学籍番号" }, { key: "source", header: "回答行" },
@@ -14,7 +13,6 @@ const headers = [
 interface Props {
   responsePath: string; responseTable: ImportedTable | null; responseMapping: ColumnMapping; responses: ResponseRecord[]; selectedIds: Set<string>;
   loading: boolean; error: string; onPick: () => void; onClear: () => void; onMappingChange: (mapping: ColumnMapping) => void; onSelectionChange: (ids: Set<string>) => void;
-  handoffIssues: ValidationIssue[]; canExportHandoff: boolean; handoffExporting: boolean; handoffError: string; exportedHandoffPath: string; onExportHandoff: () => void;
   focusTarget: ValidationTarget | null; onGoToTarget: (target: ValidationTarget) => void; onFocusHandled: () => void;
 }
 
@@ -57,12 +55,5 @@ export function OrganizerParticipantsStep(props: Props) {
         </TableContainer>}
       </DataTable>
     </div> : <div className="empty-state">Googleフォーム回答を選択してください。</div>}
-    <div className="handoff-action">
-      <Button renderIcon={DocumentExport} onClick={props.onExportHandoff} disabled={!props.canExportHandoff || props.handoffExporting}>サークル長に渡す引継ぎデータを書き出す</Button>
-      {props.handoffExporting ? <InlineLoading description="参加者データを書き出し中" /> : null}
-      {props.handoffError ? <InlineNotification kind="error" title="参加者データを書き出せませんでした" subtitle={props.handoffError} hideCloseButton lowContrast /> : null}
-      {props.exportedHandoffPath ? <InlineNotification kind="success" title="書き出しました" subtitle={props.exportedHandoffPath} hideCloseButton lowContrast /> : null}
-    </div>
-    <ValidationIssueList issues={props.handoffIssues} onGoToTarget={props.onGoToTarget} />
   </section>;
 }

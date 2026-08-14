@@ -10,9 +10,10 @@ interface ProjectStepProps {
   onChange: (project: ProjectInfo) => void;
   focusTarget: ValidationTarget | null;
   onFocusHandled: () => void;
+  organizerHeading?: string;
 }
 
-export function ProjectStep({ project, role, roster, onChange, focusTarget, onFocusHandled }: ProjectStepProps) {
+export function ProjectStep({ project, role, roster, onChange, focusTarget, onFocusHandled, organizerHeading = "基本情報" }: ProjectStepProps) {
   const [invalidField, setInvalidField] = useState<string | null>(null);
   const organizerItems = roster.map((person, index) => ({ id: String(index), index, label: `${person.name} / ${person.studentId || "学籍番号なし"}` }));
   const selectedOrganizer = project.organizer.rosterIndex === null ? null : organizerItems.find((item) => item.index === project.organizer.rosterIndex) ?? null;
@@ -50,7 +51,7 @@ export function ProjectStep({ project, role, roster, onChange, focusTarget, onFo
   }
 
   return <section aria-labelledby="project-heading">
-    <div className="page-heading"><div><h1 id="project-heading">登山計画書の情報</h1></div></div>
+    <div className="page-heading"><div><h1 id="project-heading">{organizerHeading}</h1></div></div>
     <FormGroup legendText="基本情報">
       <div className="form-grid form-grid--three">
         <TextInput id="mountain-name" invalid={invalid("mountain-name")} labelText="山名" value={project.mountainName} onChange={(event) => setField("mountainName", event.target.value)} />
