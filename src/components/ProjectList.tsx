@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Button, DataTable, InlineLoading, Modal, OverflowMenu, OverflowMenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableHeader, TableRow, TableToolbar, TableToolbarContent, TextInput, ToastNotification } from "@carbon/react";
 import type { ProjectRole, ProjectSummary } from "../types";
 import { defaultProjectName } from "../lib/projects";
+import { projectEntryRoles } from "../lib/projectEntry";
 
 interface ProjectListProps {
   projects: ProjectSummary[]; loading: boolean; error: string; onCreate: (role: ProjectRole) => void; onImport: () => void;
@@ -22,7 +23,7 @@ export function ProjectList({ projects, loading, error, onCreate, onImport, onOp
   const [renameValue, setRenameValue] = useState("");
   const rows = useMemo(() => projects.map((project) => ({ ...project, id: project.id, document: documentLabel(project.role) })), [projects]);
   const byId = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
-  const createActions = <div className="project-actions"><Button renderIcon={Add} onClick={() => onCreate("organizer")}>登山計画書・引継ぎデータを作る</Button><Button kind="secondary" renderIcon={Upload} onClick={onImport}>学務への提出書類を作る</Button></div>;
+  const createActions = <div className="project-actions"><Button renderIcon={Add} onClick={() => onCreate(projectEntryRoles.organizer)}>登山計画書・引継ぎデータを作る</Button><Button kind="secondary" renderIcon={Upload} onClick={onImport}>学務への提出書類を作る</Button></div>;
 
   return <main className="project-list-page" aria-labelledby="project-list-heading">
     <div className="page-heading page-heading--projects"><h1 id="project-list-heading">企画一覧</h1>{projects.length === 0 && !loading ? createActions : null}</div>

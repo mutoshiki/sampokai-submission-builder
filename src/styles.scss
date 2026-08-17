@@ -254,6 +254,28 @@ body {
   margin-top: spacing.$spacing-07;
 }
 
+.participant-add-panel {
+  display: grid;
+  grid-template-columns: minmax(18rem, 36rem) auto;
+  align-items: end;
+  gap: spacing.$spacing-04;
+  padding: spacing.$spacing-04 spacing.$spacing-05;
+  background: colors.$gray-10;
+  border-bottom: 1px solid colors.$gray-30;
+}
+
+.participant-add-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: spacing.$spacing-02;
+}
+
+.participant-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: spacing.$spacing-02;
+}
+
 .summary-line {
   display: flex;
   flex-wrap: wrap;
@@ -576,6 +598,11 @@ body {
   @include type.type-style("label-01");
 }
 
+.summary-line span:nth-child(3) {
+  color: colors.$gray-100;
+  @include type.type-style("heading-compact-01");
+}
+
 .output-result__path {
   overflow: hidden;
   color: colors.$gray-70;
@@ -622,6 +649,7 @@ body {
     border-bottom: 1px solid colors.$gray-20;
   }
   .usage-help__flows { grid-template-columns: minmax(0, 1fr); }
+  .participant-add-panel { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
 }
 
 @media (max-width: 420px) {

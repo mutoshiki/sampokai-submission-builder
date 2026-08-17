@@ -3,6 +3,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebviewWindow, WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { DocumentExport } from "@carbon/icons-react";
+import { InlineLoading, InlineNotification } from "@carbon/react";
 import { AppHeader } from "./components/AppHeader";
 import { AppShell } from "./components/AppShell";
 import { ProjectList } from "./components/ProjectList";
@@ -15,6 +16,8 @@ import { ReviewStep } from "./components/ReviewStep";
 import { allowRouteImagePreview, deleteProject, generateDocuments, getSampleDataDefaults, listProjects, loadProject, loadTabularFile, openOutputFolder, saveProject, writeParticipantCsv } from "./lib/api";
 import { createProjectId, defaultProjectName, duplicateProjectSnapshot, projectRole, PROJECT_SCHEMA_VERSION } from "./lib/projects";
 import { participantCsvExtension, toHandoffParticipants } from "./lib/handoff";
+import { projectEntryRoles } from "./lib/projectEntry";
+import { restoredProjectStep } from "./lib/projectFlow";
 import { useDebugShortcut } from "./lib/debugShortcut";
 import { buildItineraryText, durationBetween } from "./lib/itinerary";
 import {
@@ -26,12 +29,13 @@ import {
   emptyMapping,
 } from "./lib/mapping";
 import { findDuplicateResponseIds, matchResponses } from "./lib/matching";
-import { resolveSelectedParticipants } from "./lib/participants";
+import { addedParticipantFromRoster, resolveSelectedParticipants } from "./lib/participants";
 import { validateLeaderSubmission } from "./lib/leaderValidation";
 import { validateHikingPlan } from "./lib/hikingPlanValidation";
 import { validateHandoff } from "./lib/handoffValidation";
 import type {
   ColumnMapping,
+  AddedParticipant,
   GenerationResult,
   ImportedTable,
   PlanInfo,
@@ -95,7 +99,7 @@ const initialPlan: PlanInfo = {
 const emptyProjectSnapshot = (now = new Date().toISOString(), id: string = createProjectId()): ProjectSnapshot => ({
   schemaVersion: PROJECT_SCHEMA_VERSION, id, createdAt: now, updatedAt: now, step: 0, role: "organizer", handoffPath: "",
   rosterPath: "", responsePath: "", rosterMapping: emptyMapping(), responseMapping: emptyMapping(),
-  manualMatches: {}, participantOverrides: {}, selectedIds: [], project: structuredClone(initialProject),
+  manualMatches: {}, participantOverrides: {}, addedParticipants: [], selectedIds: [], project: structuredClone(initialProject),
   plan: structuredClone(initialPlan), privacyMode: "full", outputRoot: "",
 });
 
@@ -120,6 +124,8 @@ export default function App() {
   }, [isEditorWindow]);
   const isProjectWindow = Boolean(projectWindowId);
   const [screen, setScreen] = useState<"list" | "editor">(isProjectWindow ? "editor" : "list");
+  const [projectLoading, setProjectLoading] = useState(isProjectWindow);
+  const [projectLoadError, setProjectLoadError] = useState("");
   const [editorScope, setEditorScope] = useState<OrganizerEditorScope>(requestedEditorScope);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
@@ -127,7 +133,7 @@ export default function App() {
   const [activeProject, setActiveProject] = useState<{ id: string; createdAt: string } | null>(null);
   const [saveStatus, setSaveStatus] = useState<"saving" | "saved" | "error">("saved");
   const [step, setStep] = useState<StepId>(0);
-  const [role, setRole] = useState<ProjectRole>("organizer");
+  const [role, setRole] = useState<ProjectRole | null>(null);
   const [handoffPath, setHandoffPath] = useState("");
   const [rosterPath, setRosterPath] = useState("");
   const [responsePath, setResponsePath] = useState("");
@@ -137,6 +143,7 @@ export default function App() {
   const [responseMapping, setResponseMapping] = useState<ColumnMapping>(emptyMapping);
   const [manualMatches, setManualMatches] = useState<Record<string, number | null>>({});
   const [participantOverrides, setParticipantOverrides] = useState<Record<number, Partial<RosterRecord>>>({});
+  const [addedParticipants, setAddedParticipants] = useState<AddedParticipant[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [project, setProject] = useState<ProjectInfo>(initialProject);
   const [plan, setPlan] = useState<PlanInfo>(initialPlan);
@@ -185,8 +192,8 @@ export default function App() {
     [matches, selectedIds],
   );
   const resolvedParticipants = useMemo(
-    () => resolveSelectedParticipants(selectedMatches, roster),
-    [selectedMatches, roster],
+    () => resolveSelectedParticipants(selectedMatches, roster, addedParticipants),
+    [selectedMatches, roster, addedParticipants],
   );
   const participants = useMemo(
     () => resolvedParticipants.map(({ participant }) => participant),
@@ -212,9 +219,9 @@ export default function App() {
     };
   }, [project, roster, role]);
   const issues = useMemo(() => role === "leader"
-    ? validateLeaderSubmission(selectedMatches, resolvedParticipants, currentProject, outputRoot)
+    ? validateLeaderSubmission(selectedMatches, resolvedParticipants, currentProject, outputRoot, roster)
     : [],
-  [role, selectedMatches, resolvedParticipants, currentProject, outputRoot]);
+  [role, selectedMatches, resolvedParticipants, currentProject, outputRoot, roster]);
   const isOrganizerOverview = !isEditorWindow && role === "organizer" && step === 1;
 
   useEffect(() => {
@@ -222,10 +229,10 @@ export default function App() {
     void refreshProjects();
   }, [isProjectWindow]);
 
-  const snapshot = (): ProjectSnapshot | null => activeProject ? {
+  const snapshot = (): ProjectSnapshot | null => activeProject && role ? {
     schemaVersion: PROJECT_SCHEMA_VERSION, id: activeProject.id, createdAt: activeProject.createdAt,
     updatedAt: new Date().toISOString(), step, role, handoffPath, rosterPath, responsePath, rosterMapping, responseMapping,
-    manualMatches, participantOverrides, selectedIds: [...selectedIds], project: currentProject, plan, privacyMode, outputRoot,
+    manualMatches, participantOverrides, addedParticipants, selectedIds: [...selectedIds], project: currentProject, plan, privacyMode, outputRoot,
   } : null;
 
   const queueSave = async (current: ProjectSnapshot) => {
@@ -261,7 +268,7 @@ export default function App() {
       if (autosaveTimer.current !== null) window.clearTimeout(autosaveTimer.current);
       autosaveTimer.current = null;
     };
-  }, [screen, activeProject, step, role, handoffPath, rosterPath, responsePath, rosterMapping, responseMapping, manualMatches, participantOverrides, selectedIds, currentProject, plan, privacyMode, outputRoot, isOrganizerOverview]);
+  }, [screen, activeProject, step, role, handoffPath, rosterPath, responsePath, rosterMapping, responseMapping, manualMatches, participantOverrides, addedParticipants, selectedIds, currentProject, plan, privacyMode, outputRoot, isOrganizerOverview]);
 
   const toggleDebugControls = () => setSampleDataControlVisible((visible) => !visible);
   useDebugShortcut(toggleDebugControls, isTauriRuntime());
@@ -282,14 +289,13 @@ export default function App() {
   }, [role, step]);
 
   const applySnapshot = async (saved: ProjectSnapshot, editorTarget: ValidationTarget | null = null) => {
-    setActiveProject({ id: saved.id, createdAt: saved.createdAt });
     const savedRole = projectRole(saved);
+    setActiveProject({ id: saved.id, createdAt: saved.createdAt });
     setRole(savedRole); setHandoffPath(saved.handoffPath ?? "");
-    const organizerStep: StepId = 1;
     const editorStep: StepId = editorTarget?.step ?? (saved.step === 2 || saved.step === 3 ? saved.step : 0);
-    setStep((savedRole === "leader" ? Math.min(saved.step, 2) : isEditorWindow ? editorStep : organizerStep) as StepId); setRosterPath(saved.rosterPath); setResponsePath(saved.responsePath);
+    setStep(restoredProjectStep(savedRole, saved.step, isEditorWindow, editorStep)); setRosterPath(saved.rosterPath); setResponsePath(saved.responsePath);
     setRosterMapping(saved.rosterMapping); setResponseMapping(saved.responseMapping);
-    setManualMatches(saved.manualMatches); setParticipantOverrides(saved.participantOverrides);
+    setManualMatches(saved.manualMatches); setParticipantOverrides(saved.participantOverrides); setAddedParticipants(saved.addedParticipants ?? []);
     setSelectedIds(new Set(saved.selectedIds)); setProject(saved.project); setPlan(saved.plan);
     setPrivacyMode(savedRole === "leader" ? "full" : saved.privacyMode); setOutputRoot(saved.outputRoot); setResult(null); setGenerationError("");
     setImportError(""); setValidationTarget(editorTarget);
@@ -365,22 +371,6 @@ export default function App() {
     setSaveStatus("saving");
     try { await saveProject(saved); await refreshProjects(); await openProjectInWindow(saved.id); setSaveStatus("saved"); }
     catch (error) { setProjectsError(String(error)); }
-  };
-
-  const importHandoff = async () => {
-    if (!isTauriRuntime()) return;
-    const selected = await open({ multiple: false, directory: false, filters: [{ name: "サークル長に渡すデータ", extensions: ["csv"] }] });
-    if (typeof selected !== "string") return;
-    try {
-      const table = await loadTabularFile(selected);
-      const saved = {
-        ...emptyProjectSnapshot(), role: "leader" as const, handoffPath: "", responsePath: selected,
-        responseMapping: detectMapping(table, "response"), selectedIds: table.rows.map((_, index) => `response-${index}`),
-        project: structuredClone(initialProject),
-        plan: structuredClone(initialPlan), privacyMode: "full" as const,
-      };
-      await saveProject(saved); await refreshProjects(); await openProjectInWindow(saved.id);
-    } catch (error) { setProjectsError(String(error)); }
   };
 
   const openProject = async (id: string) => {
@@ -490,6 +480,7 @@ export default function App() {
       responseMapping: sampleResponseMapping,
       manualMatches: {},
       participantOverrides: {},
+      addedParticipants: [],
       selectedIds: sampleResponses.map(({ rowId }) => rowId),
       project: {
         ...structuredClone(initialProject),
@@ -539,7 +530,7 @@ export default function App() {
     };
   };
 
-  const enterSampleData = async (sampleRole = role) => {
+  const enterSampleData = async (sampleRole: ProjectRole) => {
     if (!isTauriRuntime()) return;
     setProjectsError("");
     setSaveStatus("saving");
@@ -579,11 +570,16 @@ export default function App() {
   const clearValidationTarget = () => setValidationTarget(null);
 
   useEffect(() => {
-    if (!projectWindowId || !isTauriRuntime()) return;
+    if (!projectWindowId) return;
     void loadProject(projectWindowId)
       .then((saved) => applySnapshot(saved, requestedEditorTarget))
-      .then(() => setScreen("editor"))
-      .catch((error) => setProjectsError(String(error)));
+      .then(() => { setProjectLoadError(""); setScreen("editor"); setProjectLoading(false); })
+      .catch((error) => {
+        const message = String(error);
+        setProjectsError(message);
+        setProjectLoadError(message);
+        setProjectLoading(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -716,7 +712,7 @@ export default function App() {
       return;
     }
     const lastStep = role === "leader" ? 2 : 3;
-    if (step < lastStep) setStep((step + 1) as StepId);
+    if (step < lastStep) void saveCurrentProject().then((saved) => { if (saved) setStep((step + 1) as StepId); });
     else if (role === "leader") void generate();
   };
 
@@ -735,16 +731,22 @@ export default function App() {
           onEnterSubmissionSampleData={() => void enterSampleData("leader")}
           updateEnabled={isTauriRuntime()}
         />
-        <ProjectList projects={projects} loading={projectsLoading} error={projectsError} onCreate={(role) => void createProject(role)} onImport={() => void importHandoff()} onOpen={(id) => void openProject(id)} onDuplicate={(id) => void duplicateProject(id)} onRename={(id, name) => void renameProject(id, name)} onDelete={(id) => void removeProject(id)} />
+        <ProjectList projects={projects} loading={projectsLoading} error={projectsError} onCreate={(role) => void createProject(role)} onImport={() => void createProject(projectEntryRoles.leader)} onOpen={(id) => void openProject(id)} onDuplicate={(id) => void duplicateProject(id)} onRename={(id, name) => void renameProject(id, name)} onDelete={(id) => void removeProject(id)} />
       </div>
     );
+  }
+  if (projectLoading) {
+    return <div className="app-root"><AppHeader updateEnabled={isTauriRuntime()} /><main className="overview-home"><InlineLoading description="企画を読み込み中" /></main></div>;
+  }
+  if (!activeProject || !role) {
+    return <div className="app-root"><AppHeader updateEnabled={isTauriRuntime()} /><main className="overview-home"><InlineNotification kind="error" title="企画を開けませんでした" subtitle={projectLoadError || "企画データが不正です。"} hideCloseButton lowContrast /></main></div>;
   }
   if (isOrganizerOverview) {
     return <div className="app-root">
       <AppHeader
         windowTitle={currentProject.projectName?.trim() || defaultProjectName(currentProject.mountainName)}
         dataEntryAvailable={sampleDataControlVisible}
-        onEnterSampleData={() => void enterSampleData()}
+        onEnterSampleData={() => void enterSampleData(role)}
         saveStatus={activeProject ? saveStatus : undefined}
         updateEnabled={isTauriRuntime()}
       />
@@ -774,7 +776,7 @@ export default function App() {
       nextIcon={role === "leader" && step === 2 ? DocumentExport : undefined}
       projectTitle={currentProject.projectName?.trim() || defaultProjectName(currentProject.mountainName)}
       dataEntryAvailable={sampleDataControlVisible}
-      onEnterSampleData={() => void enterSampleData()}
+      onEnterSampleData={() => void enterSampleData(role)}
       saveStatus={activeProject ? saveStatus : undefined}
       updateEnabled={isTauriRuntime()}
     >
@@ -807,6 +809,14 @@ export default function App() {
           onResponseMappingChange={setResponseMapping}
           onSelectionChange={setSelectedIds}
           onManualMatch={(responseId, rosterIndex) => setManualMatches((current) => ({ ...current, [responseId]: rosterIndex }))}
+          addedParticipants={addedParticipants}
+          onAddRosterParticipant={(rosterIndex) => {
+            const rosterParticipant = roster[rosterIndex];
+            const added = rosterParticipant ? addedParticipantFromRoster(rosterParticipant) : null;
+            if (!added || selectedMatches.some((match) => match.rosterIndex === rosterIndex)) return;
+            setAddedParticipants((current) => current.some((participant) => participant.id === added.id) ? current : [...current, added]);
+          }}
+          onRemoveAddedParticipant={(id) => setAddedParticipants((current) => current.filter((participant) => participant.id !== id))}
           onParticipantOverride={(rosterIndex, participant) => {
             const baseParticipant = baseRoster[rosterIndex];
             if (!baseParticipant) return;
@@ -821,6 +831,7 @@ export default function App() {
               setProject((current) => ({ ...current, organizer: { rosterIndex, studentId: participant.studentId, name: participant.name, faculty: participant.faculty, department: participant.department, phone: participant.phone } }));
             }
           }}
+          onAddedParticipantChange={(id, participant) => setAddedParticipants((current) => current.map((added) => added.id === id ? { ...added, participant: { ...participant, rowId: added.participant.rowId, sourceRow: added.participant.sourceRow } } : added))}
            focusTarget={validationTarget}
            onParticipantSaved={() => { if (validationReturnStep !== null) setStep(validationReturnStep); setValidationReturnStep(null); }}
            onFocusHandled={clearValidationTarget}

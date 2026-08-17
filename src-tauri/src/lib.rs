@@ -157,7 +157,7 @@ fn read_project(path: &Path) -> Result<Value, AppError> {
     let bytes = fs::read(path).or_else(|_| fs::read(path.with_extension("bak"))).map_err(|_| AppError::ProjectStorage)?;
     let project = serde_json::from_slice::<Value>(&bytes).map_err(|_| AppError::ProjectDataInvalid)?;
     // Later versions add migrations at this gate; never deserialize unknown shapes into editor state.
-    let valid = matches!(project.get("schemaVersion").and_then(Value::as_u64), Some(1 | 2)) && project.get("id").and_then(Value::as_str).is_some();
+    let valid = matches!(project.get("schemaVersion").and_then(Value::as_u64), Some(1 | 2 | 3)) && project.get("id").and_then(Value::as_str).is_some();
     if valid { Ok(project) } else { Err(AppError::ProjectDataInvalid) }
 }
 
@@ -174,7 +174,8 @@ fn project_summary(value: &Value) -> Option<ProjectSummary> {
         id, created_at: string_at(value, &["createdAt"]), updated_at: string_at(value, &["updatedAt"]),
         mountain_name: string_at(value, &["project", "mountainName"]), project_name: string_at(value, &["project", "projectName"]), date: string_at(value, &["project", "date"]),
         organizer_name: string_at(value, &["project", "organizer", "name"]),
-        participant_count: value.get("selectedIds").and_then(Value::as_array).map_or(0, Vec::len),
+        participant_count: value.get("selectedIds").and_then(Value::as_array).map_or(0, Vec::len)
+            + value.get("addedParticipants").and_then(Value::as_array).map_or(0, Vec::len),
         role: value.get("role").and_then(Value::as_str).map(str::to_string),
     })
 }
@@ -212,7 +213,7 @@ fn load_project(app: AppHandle, id: String) -> Result<Value, AppError> {
 #[tauri::command]
 fn save_project(app: AppHandle, project: Value) -> Result<(), AppError> {
     let id = project.get("id").and_then(Value::as_str).ok_or(AppError::ProjectDataInvalid)?;
-    if !matches!(project.get("schemaVersion").and_then(Value::as_u64), Some(1 | 2)) { return Err(AppError::ProjectDataInvalid); }
+    if !matches!(project.get("schemaVersion").and_then(Value::as_u64), Some(1 | 2 | 3)) { return Err(AppError::ProjectDataInvalid); }
     let path = project_path(&project_directory(&app)?, id)?; save_project_file(&path, &project)
 }
 
@@ -695,6 +696,15 @@ mod tests {
         assert_eq!(summary.project_name, "テスト岳企画");
         assert_eq!(summary.mountain_name, "テスト岳");
         assert!(!path.with_extension("bak").exists());
+    }
+
+    #[test]
+    fn reads_current_schema_projects_saved_by_frontend() {
+        let directory = tempfile::tempdir().expect("project directory");
+        let path = project_path(directory.path(), "project-003").expect("safe id");
+        let project = serde_json::json!({ "schemaVersion": 3, "id": "project-003" });
+        save_project_file(&path, &project).expect("save current project");
+        assert_eq!(read_project(&path).expect("load current project"), project);
     }
 
     #[test]

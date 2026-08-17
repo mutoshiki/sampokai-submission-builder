@@ -38,7 +38,16 @@ export interface RosterRecord {
 export type ParticipantField = Exclude<keyof RosterRecord, "rowId" | "sourceRow" | "nameKana" | "department">;
 
 export interface ResolvedParticipant {
-  rosterIndex: number;
+  rosterIndex: number | null;
+  addedParticipantId?: string;
+  source: "handoff" | "roster";
+  participant: RosterRecord;
+}
+
+/** A roster member added locally for this project, independent of source row order. */
+export interface AddedParticipant {
+  /** Stable matching identity: student ID when present, otherwise normalized name. */
+  id: string;
   participant: RosterRecord;
 }
 
@@ -137,7 +146,8 @@ export interface ValidationTarget {
   fieldId: string;
   tabIndex?: number;
   participant?: {
-    rosterIndex: number;
+    rosterIndex: number | null;
+    addedParticipantId?: string;
     rowId: string;
     field: ParticipantField;
   };
@@ -177,6 +187,8 @@ export interface ProjectSnapshot {
   responseMapping: ColumnMapping;
   manualMatches: Record<string, number | null>;
   participantOverrides: Record<number, Partial<RosterRecord>>;
+  /** Optional so schema v1/v2 project files continue to load. */
+  addedParticipants?: AddedParticipant[];
   selectedIds: string[];
   project: ProjectInfo;
   plan: PlanInfo;

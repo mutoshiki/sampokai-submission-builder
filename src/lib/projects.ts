@@ -1,6 +1,6 @@
 import type { ProjectRole, ProjectSnapshot } from "../types";
 
-export const PROJECT_SCHEMA_VERSION = 2;
+export const PROJECT_SCHEMA_VERSION = 3;
 
 export const createProjectId = () => crypto.randomUUID();
 

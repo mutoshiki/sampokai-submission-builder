@@ -4,13 +4,14 @@ export const participantEditorFieldId = (rowId: string, field: ParticipantField)
   `participant-${rowId}-${field}`;
 
 export const participantValidationTarget = (
-  rosterIndex: number,
+  rosterIndex: number | null,
   rowId: string,
   field: ParticipantField,
+  addedParticipantId?: string,
 ): ValidationTarget => ({
   step: 0,
   fieldId: participantEditorFieldId(rowId, field),
-  participant: { rosterIndex, rowId, field },
+  participant: { rosterIndex, rowId, field, addedParticipantId },
 });
 
 export const validationTargets = {
