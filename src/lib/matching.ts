@@ -9,6 +9,13 @@ export const normalizeName = (value: string) =>
     .toLocaleLowerCase("ja")
     .replace(/[\s　・･.,，。]/g, "");
 
+/** Stable key for persisted manual matching. Never use table row position as identity. */
+export const responseMatchKey = (response: ResponseRecord) => {
+  const studentId = normalizeStudentId(response.studentId);
+  if (studentId) return `student:${studentId}`;
+  return `name:${normalizeName(response.name)}`;
+};
+
 const addToIndex = (map: Map<string, number[]>, key: string, index: number) => {
   if (!key) return;
   const current = map.get(key) ?? [];
@@ -29,7 +36,7 @@ export const matchResponses = (
   });
 
   return responses.map((response) => {
-    const manual = manualMatches[response.rowId];
+    const manual = manualMatches[responseMatchKey(response)];
     if (typeof manual === "number" && roster[manual]) {
       return {
         response,
