@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findDuplicateResponseIds, matchResponses, normalizeName } from "./matching";
+import { findDuplicateResponseIds, matchResponses, normalizeName, responseMatchKey } from "./matching";
 import type { ResponseRecord, RosterRecord } from "../types";
 
 const roster: RosterRecord[] = [
@@ -45,6 +45,22 @@ describe("safe participant matching", () => {
   it("never fuzzy-matches a similar but non-identical name", () => {
     const [match] = matchResponses([response("f1", "", "山田 太朗")], roster, {});
     expect(match.status).toBe("not_found");
+    expect(match.rosterIndex).toBeNull();
+  });
+
+  it("persists a manual match by participant identity rather than row position", () => {
+    const original = response("f7", "25T9999X", "山田 太郎");
+    const manualMatches = { [responseMatchKey(original)]: 0 };
+    const moved = { ...original, rowId: "f2", sourceRow: 3 };
+    const [match] = matchResponses([moved], roster, manualMatches);
+    expect(match.status).toBe("manual");
+    expect(match.rosterIndex).toBe(0);
+  });
+
+  it("ignores legacy row-position manual matches when a different person occupies that row", () => {
+    const kim = response("f7", "26J1041J", "KIM JAEYOUNG");
+    const [match] = matchResponses([kim], roster, { f7: 0 });
+    expect(match.status).not.toBe("manual");
     expect(match.rosterIndex).toBeNull();
   });
 
