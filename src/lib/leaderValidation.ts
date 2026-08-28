@@ -36,7 +36,7 @@ export const validateLeaderSubmission = (
     phone: rosterOrganizer.phone,
   } : project.organizer;
   const required: [string, string][] = [
-    ["山名", project.mountainName], ["実施日", project.date], ["提出日", project.submissionDate], ["登山場所", project.noticePlace],
+    ["山名", project.mountainName], ["実施日", project.date], ["提出日", project.submissionDate],
     ["企画者の学籍番号", organizer.studentId], ["企画者の氏名", organizer.name], ["企画者の学部", organizer.faculty], ["企画者の学科", organizer.department], ["企画者の電話番号", organizer.phone],
   ];
   const missing = required.filter(([, value]) => !value.trim()).map(([name]) => name);

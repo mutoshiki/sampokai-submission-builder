@@ -36,8 +36,8 @@ export function ProjectStep({ project, role, roster, onChange, focusTarget, onFo
           <TextInput id="event-date" invalid={invalid("event-date")} type="date" labelText="実施日" value={project.date} onChange={(event) => setField("date", event.target.value)} />
           <TextInput id="reserve-date" type="date" labelText="予備日（任意）" value={project.reserveDate} onChange={(event) => setField("reserveDate", event.target.value)} />
           <TextInput id="submission-date" invalid={invalid("submission-date")} type="date" labelText="届出日" value={project.submissionDate} onChange={(event) => setField("submissionDate", event.target.value)} />
-          <TextInput id="notice-place" invalid={invalid("notice-place")} labelText="登山等届の場所" value={project.noticePlace} onChange={(event) => setField("noticePlace", event.target.value)} />
         </div>
+        <InlineNotification kind="info" title="登山等届の場所" subtitle="山名が自動で使用されます。" hideCloseButton lowContrast />
       </FormGroup>
       <FormGroup legendText="企画者（全体名簿から補完）">
         <div className="organizer-picker"><ComboBox id="organizer" invalid={invalid("organizer")} titleText="全体名簿から選択" items={organizerItems} selectedItem={selectedOrganizer} itemToString={(item) => item?.label ?? ""} placeholder="氏名または学籍番号で検索" onChange={({ selectedItem }) => {
