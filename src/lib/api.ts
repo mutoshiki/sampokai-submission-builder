@@ -1,5 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { GenerationResult, HandoffParticipant, ImportedTable, OfficeStatus, ProjectSnapshot, ProjectSummary } from "../types";
+import { normalizeGenerationPayload } from "./generationPayload";
 
 export interface SampleDataDefaults {
   rosterPath: string;
@@ -20,7 +21,7 @@ export const generateDocuments = (payload: unknown, outputRoot: string, onProgre
   const onEvent = new Channel<GenerationEvent>((message) => {
     if (message.event === "progress") onProgress(message.data.stage);
   });
-  return invoke<GenerationResult>("generate_documents", { payload, outputRoot, onEvent });
+  return invoke<GenerationResult>("generate_documents", { payload: normalizeGenerationPayload(payload), outputRoot, onEvent });
 };
 
 export const openOutputFolder = (path: string) => invoke("open_output_folder", { path });
